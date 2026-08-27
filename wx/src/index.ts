@@ -3,13 +3,23 @@ export { defineConfig, loadUserConfig } from "./config.js";
 export { availableSourceTypes, SOURCE_TYPES } from "./sources/registry.js";
 export { toShareGpt } from "./format.js";
 export type {
+  HttpSourceConfig,
   HttpSourceOptions,
+  InferBackend,
   InferConfig,
+  LocalJsonlSourceConfig,
   LocalJsonlSourceOptions,
+  RateConfig,
   ResolvedConfig,
   SftFormat,
   SourceConfig,
   SourceType,
+  SplitConfig,
+  TrainConfig,
+  TrainHyperParams,
+  TrainKnobs,
   UserConfig,
+  UserConfigContext,
   UserConfigExport,
+  UserConfigFn,
 } from "./types.js";

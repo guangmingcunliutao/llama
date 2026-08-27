@@ -89,14 +89,25 @@ export interface LocalJsonlSourceOptions {
 /**
  * 配置文件中的一条检索源。
  * 可同时启用多条，`generate` 按数组顺序尝试，某个源抽出句子后即换下一个词。
+ * `type` 决定 `options` 的形状。
  */
-export interface SourceConfig {
+export interface SourceConfigBase {
   /** 日志、缓存子目录用的名字，同一配置里须唯一 */
   name: string;
-  type: SourceType;
   enabled?: boolean;
-  options?: HttpSourceOptions | LocalJsonlSourceOptions;
 }
+
+export interface HttpSourceConfig extends SourceConfigBase {
+  type: "http";
+  options: HttpSourceOptions;
+}
+
+export interface LocalJsonlSourceConfig extends SourceConfigBase {
+  type: "local_jsonl";
+  options: LocalJsonlSourceOptions;
+}
+
+export type SourceConfig = HttpSourceConfig | LocalJsonlSourceConfig;
 
 /**
  * 远程请求频率。默认每分钟 5 次（间隔约 12 秒），降低被对方判为异常流量的概率。
@@ -160,6 +171,43 @@ export interface SplitConfig {
   seed?: number;
 }
 
+/**
+ * LlamaFactory 训练超参（从 yaml 读出，不在 termcorr.config.js 里再写一遍）。
+ */
+export interface TrainHyperParams {
+  model_name_or_path?: string;
+  finetuning_type?: "lora" | "full" | "freeze";
+  lora_rank?: number;
+  lora_alpha?: number;
+  lora_dropout?: number;
+  lora_target?: string;
+  learning_rate?: number | string;
+  num_train_epochs?: number;
+  lr_scheduler_type?: string;
+  warmup_ratio?: number;
+  per_device_train_batch_size?: number;
+  gradient_accumulation_steps?: number;
+  cutoff_len?: number;
+  output_dir?: string;
+  template?: string;
+  bf16?: boolean;
+}
+
+/** yaml 解析结果，允许 null。 */
+export type TrainKnobs = {
+  [K in keyof TrainHyperParams]?: TrainHyperParams[K] | null;
+};
+
+/**
+ * 工作区 `train` 只写路径。超参在 yaml 里，analyze 会去读。
+ */
+export interface TrainConfig {
+  /** 本轮实际使用的 LlamaFactory 训练 yaml（相对配置文件） */
+  config?: string;
+  /** 验证/预测产物目录，对应 `analyze --dir` */
+  outputDir?: string;
+}
+
 /** 工作区配置文件的形状（加载前）。 */
 export interface UserConfig {
   dict?: string;
@@ -178,6 +226,7 @@ export interface UserConfig {
   sources?: SourceConfig[];
   infer?: InferConfig;
   split?: SplitConfig;
+  train?: TrainConfig;
 }
 
 export interface UserConfigContext {
@@ -203,9 +252,14 @@ export interface OutputPaths {
   predSeen: string;
   predUnseen: string;
   predKeep: string;
-  metrics: string;
-  scored: string;
-  splitReport: string;
+      metrics: string;
+      scored: string;
+      splitReport: string;
+      analysis: string;
+      compare: string;
+      runsDir: string;
+      bestDir: string;
+      leaderboard: string;
 }
 
 export interface ResolvedRateConfig {
@@ -247,6 +301,10 @@ export interface ResolvedConfig {
   sources: ResolvedSource[];
   infer: InferConfig;
   split: Required<SplitConfig>;
+  /** 训练 yaml 绝对路径；没有则为 null。 */
+  trainConfig: string | null;
+  /** LlamaFactory 验证/预测 output_dir；没有则为 null。 */
+  trainOutputDir: string | null;
   paths: OutputPaths;
 }
 
@@ -307,6 +365,17 @@ export interface SuiteFlags {
   backend?: string;
   url?: string;
   model?: string;
+}
+
+export interface AnalyzeFlags {
+  name?: string;
+  note?: string;
+  save?: boolean;
+  compare?: boolean;
+  force?: boolean;
+  trainConfig?: string;
+  /** LlamaFactory 验证/预测输出目录（含 predict_results.json、generated_predictions.jsonl） */
+  dir?: string;
 }
 
 export interface GenerateResult {
@@ -370,6 +439,38 @@ export interface MetricsReport extends MetricsGroup {
   slices?: Record<string, MetricsGroup>;
 }
 
+export interface ConfigSnapshot {
+  kind: "model";
+  train: TrainKnobs;
+  trainConfigPath: string | null;
+  outputDir: string;
+  note?: string;
+}
+
+export interface Suggestion {
+  level: "high" | "mid" | "low";
+  title: string;
+  detail: string;
+  knobs: Record<string, string | number>;
+}
+
+export interface RunRecord {
+  name: string;
+  saved_at: string;
+  score: number;
+  score_breakdown: Record<string, number>;
+  snapshot: import("./lfMetrics.js").LfSnapshot;
+  config: ConfigSnapshot;
+  suggestions: Suggestion[];
+  suggested_patch: Record<string, string | number>;
+}
+
+export interface Leaderboard {
+  ranking_metric: string;
+  best: string | null;
+  ranking: Array<{ name: string; score: number; saved_at: string }>;
+}
+
 export type CliCommand =
   | "init"
   | "prepare"
@@ -378,4 +479,5 @@ export type CliCommand =
   | "evaluate"
   | "infer"
   | "suite"
+  | "analyze"
   | "sources";

@@ -2,10 +2,13 @@
  * termcorr 工作区配置（相对路径相对于本文件）。
  * 不要把本文件拷进 wx/。outDir 必须在 CLI 仓库外。
  *
+ * 用 defineConfig 包一层，编辑器会按 UserConfig 做字段提示和多余键检查。
  * sources 可并列多条 type: "http"；{{keyword}} 会换成当前正确词。
  * rate.requestsPerMinute 默认 5（约 12 秒一次），缓存命中不计入。
  */
-export default {
+import { defineConfig } from "termcorr";
+
+export default defineConfig({
   dict: "./data/term_pairs.jsonl",
   outDir: "./outputs",
 
@@ -71,6 +74,9 @@ export default {
     },
   },
 
+  // 只写路径。learning_rate 等超参在 yaml 里，analyze 会去读。
+  train: { config: "../train/llamafactory/train_sft.yaml" },
+
   split: {
     unseenPairRatio: 0.1,
     seenPairEvalRatio: 0.1,
@@ -79,4 +85,4 @@ export default {
     maxKeep: 400,
     seed: 42,
   },
-};
+});

@@ -119,7 +119,7 @@ node E:/llama/wx/bin/termcorr.js generate
 node E:/llama/wx/bin/termcorr.js suite
 ```
 
-`init` 会写入 `package.json`，把本地 `wx` 链成依赖，所以 `pnpm generate` 实际跑的是 `termcorr generate`。
+`init` 会写入 `package.json`，把本地 `wx` 链成依赖，所以 `pnpm generate` 实际跑的是 `termcorr generate`。`termcorr.config.js` 用 `defineConfig` 包一层，编辑器会限制字段名和 `sources` 的 `type` / `options`。
 
 可选：`cd E:/llama/wx && pnpm link --global`，之后任意目录可直接敲 `termcorr`（需该目录已在 PATH 里，pnpm 全局 bin 一般是 `%LOCALAPPDATA%\pnpm`）。
 
@@ -157,6 +157,18 @@ pnpm exec termcorr generate -c D:/work/termcorr.config.js
 ### `init`
 
 把模板拷到当前目录的 `termcorr.config.js`，并写入把本 CLI 链成本地依赖的 `package.json`。默认 `outDir` 为 `./outputs`。
+
+配置用 `defineConfig` 包一层，编辑器会按 `UserConfig` 提示字段、拦住拼错的键和 `sources[].type` 对应的 `options`：
+
+```js
+import { defineConfig } from "termcorr";
+
+export default defineConfig({
+  outDir: "./outputs",
+  train: { config: "./train_sft.yaml", outputDir: "./test_stage1" },
+  sources: [{ name: "people_search", type: "http", options: { url: "..." } }],
+});
+```
 
 - 在 CLI 仓库内会拒绝，除非 `--force`
 - 目标文件已存在也会拒绝，除非 `--force`
@@ -242,6 +254,27 @@ node E:/llama/wx/bin/termcorr.js suite --backend http
 报告里还有 `by_split`、`by_error_type`、`by_freq_bucket`。`--all` 会额外给出 `slices`（四个评估文件各自的分数）。
 
 `--baseline` 会先用规则替换写出 pred（默认全部切片），再评估。这是对照上界：规则知道 wrong/correct 时，纠错集应接近 1.0；keep 集也应保持原句。
+
+### `analyze`
+
+LlamaFactory 验证或 `predict` 跑完后，分析其输出目录里的指标 JSON / 预测 jsonl，给出**训练超参**建议（学习率、epoch、LoRA 等）。不调推理接口。
+
+```bash
+node E:/llama/wx/bin/termcorr.js analyze --dir E:/llama/test_stage1 --save --name test_stage1 --train-config ../train/llamafactory/train_sft.yaml
+node E:/llama/wx/bin/termcorr.js analyze --dir E:/llama/test_stage2 --save --name test_stage2 --train-config ../train/llamafactory/train_sft.yaml
+node E:/llama/wx/bin/termcorr.js analyze --compare
+```
+
+| 文件 | 作用 |
+| --- | --- |
+| 验证目录下的 `analysis.md` | 本轮验证解读 + 下一轮训练参数建议（方便就地看） |
+| `outputs/reports/analysis.md` | 同上，写在工作区 |
+| `outputs/reports/runs/<name>/train_sft.yaml` | 本轮实际训练配置 |
+| `outputs/reports/runs/<name>/suggested_next.yaml` | 建议的下一轮 yaml |
+| `outputs/reports/compare.md` | 多轮模型对比 |
+| `outputs/reports/best/train_sft.yaml` | 综合分最高的那一轮训练配置 |
+
+工作区可在 `termcorr.config.js` 里设 `train.config` 和 `train.outputDir`。
 
 ### `sources`
 

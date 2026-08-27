@@ -21,6 +21,7 @@ import type {
   SourceType,
   SplitConfig,
   UserConfig,
+  UserConfigExport,
   UserConfigFn,
 } from "./types.js";
 import { isRecord } from "./util.js";
@@ -56,8 +57,18 @@ export function packageRoot(): string {
   return PKG_ROOT;
 }
 
-/** 给配置文件提供类型提示用的恒等函数，本身不做校验。 */
-export function defineConfig<T extends UserConfig>(config: T): T {
+/**
+ * 给工作区 `termcorr.config.js` 做字段提示和多余键检查，运行时原样返回。
+ *
+ * @example
+ * ```js
+ * import { defineConfig } from "termcorr";
+ * export default defineConfig({ outDir: "./outputs" });
+ * ```
+ */
+export function defineConfig(config: UserConfig): UserConfig;
+export function defineConfig(config: UserConfigFn): UserConfigFn;
+export function defineConfig(config: UserConfigExport): UserConfigExport {
   return config;
 }
 
@@ -245,6 +256,8 @@ export async function loadUserConfig(opts: LoadUserConfigOptions): Promise<Resol
     resolveFrom(root, cfg.cacheDir || cfg.cache_dir) || path.join(os.homedir(), ".termcorr", "cache");
 
   const dict = resolveFrom(root, cfg.dict || cfg.dict_path);
+  const trainConfig = resolveFrom(root, cfg.train?.config);
+  const trainOutputDir = resolveFrom(root, cfg.train?.outputDir);
   const infer: InferConfig = cfg.infer ?? { backend: "rule" };
   const split: Required<SplitConfig> = {
     unseenPairRatio: cfg.split?.unseenPairRatio ?? 0.1,
@@ -276,6 +289,8 @@ export async function loadUserConfig(opts: LoadUserConfigOptions): Promise<Resol
     sources: normalizeSources(cfg.sources),
     infer,
     split,
+    trainConfig,
+    trainOutputDir,
     paths: {
       dict,
       sft: path.join(outDir, "sft", "train.jsonl"),
@@ -293,6 +308,11 @@ export async function loadUserConfig(opts: LoadUserConfigOptions): Promise<Resol
       metrics: path.join(outDir, "reports", "metrics.json"),
       scored: path.join(outDir, "reports", "scored.jsonl"),
       splitReport: path.join(outDir, "reports", "split.json"),
+      analysis: path.join(outDir, "reports", "analysis.md"),
+      compare: path.join(outDir, "reports", "compare.md"),
+      runsDir: path.join(outDir, "reports", "runs"),
+      bestDir: path.join(outDir, "reports", "best"),
+      leaderboard: path.join(outDir, "reports", "leaderboard.json"),
     },
   };
 }

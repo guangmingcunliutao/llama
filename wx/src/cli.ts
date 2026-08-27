@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { isInsideDir, loadUserConfig, packageRoot } from "./config.js";
+import { analyze } from "./analyze.js";
 import { evaluate, evaluateAll, ruleBaseline, ruleBaselineAll } from "./evaluate.js";
 import { generate } from "./generate.js";
 import { infer } from "./infer.js";
@@ -31,6 +32,7 @@ const HELP: Record<string, string> = {
   split      划分训练集与评估集（seen / unseen / keep）
   infer      推理（rule / http / file）
   evaluate   对比预测与 gold，写出指标
+  analyze    LlamaFactory 验证/预测结束后写 md、给训练超参建议；可对比多轮并保存最优训练配置
   suite      split + 基线推理 + 评估（不跑 generate）
   sources    列出内置源类型（http / local_jsonl）
 
@@ -46,6 +48,7 @@ const HELP: Record<string, string> = {
   termcorr suite
   termcorr infer --backend http --all
   termcorr evaluate --all
+  termcorr analyze --dir E:/llama/test_stage1 --save --name test_stage1 --train-config ../train/llamafactory/train_sft.yaml
 `,
   init: `init — 在当前目录生成 termcorr.config.js 和 package.json
 
@@ -117,9 +120,26 @@ backend:
   --all             评估全部切片（需已有对应 pred）
   --baseline        先用规则替换写出 pred，再评估
 `,
+  analyze: `analyze — 分析 LlamaFactory 验证/预测输出，给出训练超参建议
+
+读 output_dir 里的 predict_results.json / all_results.json / generated_predictions.jsonl
+（也可以是 trainer_state.json 的 eval_loss）。不调 HTTP 推理接口。
+写出 reports/analysis.md，并在该目录旁再写一份 analysis.md。
+--save 会记下本轮训练 yaml，对比多轮后把综合分最高的训练配置拷到 reports/best/。
+
+选项:
+  --dir <path>           LlamaFactory 验证或 predict 的输出目录
+  --train-config <yaml>  本轮实际使用的 LlamaFactory 训练配置
+  --name <id>            run 名称
+  --note <text>          备注
+  --save                 保存本轮并刷新对比 / 最优训练配置
+  --compare              根据已保存 run 重写 compare.md
+  --force                覆盖同名 run
+`,
   suite: `suite — 划分评估集 + 推理 + 评估（不跑 generate）
 
 默认用规则基线。模型评估时加 --backend http。
+不会自动 analyze（analyze 读的是 LlamaFactory 验证产物）。
 
 选项:
   --backend <name>  rule（默认）或 http
@@ -172,6 +192,7 @@ function initWorkPackage(cwd: string): string {
       split: "node ./node_modules/termcorr/bin/termcorr.js split",
       infer: "node ./node_modules/termcorr/bin/termcorr.js infer",
       evaluate: "node ./node_modules/termcorr/bin/termcorr.js evaluate",
+      analyze: "node ./node_modules/termcorr/bin/termcorr.js analyze",
       suite: "node ./node_modules/termcorr/bin/termcorr.js suite",
       ...scripts,
     },
@@ -227,6 +248,12 @@ export async function main(argv: string[]): Promise<number> {
       backend: { type: "string" },
       url: { type: "string" },
       model: { type: "string" },
+      "train-config": { type: "string" },
+      dir: { type: "string" },
+      note: { type: "string" },
+      name: { type: "string" },
+      save: { type: "boolean", default: false },
+      compare: { type: "boolean", default: false },
       baseline: { type: "boolean", default: false },
       all: { type: "boolean", default: false },
       force: { type: "boolean", default: false },
@@ -327,6 +354,19 @@ export async function main(argv: string[]): Promise<number> {
       });
     }
     evaluateAll(cfg, { output: values.output });
+    return 0;
+  }
+
+  if (command === "analyze") {
+    analyze(cfg, {
+      name: values.name,
+      note: values.note,
+      save: values.save,
+      compare: values.compare,
+      force: values.force,
+      trainConfig: values["train-config"],
+      dir: values.dir,
+    });
     return 0;
   }
 
