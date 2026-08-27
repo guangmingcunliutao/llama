@@ -19,7 +19,6 @@ import type {
   ResolvedRateConfig,
   ResolvedSource,
   SourceType,
-  SplitConfig,
   UserConfig,
   UserConfigExport,
   UserConfigFn,
@@ -30,6 +29,8 @@ const DEFAULT_INSTRUCTION =
   "请将句子中的不规范政治表述改正为规范表述，只输出改正后的句子。";
 
 const CONFIG_NAMES = [
+  "termcorr.config.ts",
+  "termcorr.config.mts",
   "termcorr.config.mjs",
   "termcorr.config.js",
   "termcorr.config.cjs",
@@ -43,6 +44,7 @@ const CONFIG_NAMES = [
 function detectPackageRoot(): string {
   let dir = path.dirname(fileURLToPath(import.meta.url));
   for (let i = 0; i < 6; i += 1) {
+    if (fs.existsSync(path.join(dir, "templates", "termcorr.config.ts"))) return dir;
     if (fs.existsSync(path.join(dir, "templates", "termcorr.config.js"))) return dir;
     const next = path.resolve(dir, "..");
     if (next === dir) break;
@@ -115,6 +117,16 @@ function findConfigFile(cwd: string, explicit?: string): string | null {
 async function importConfig(file: string): Promise<unknown> {
   if (file.endsWith(".json")) {
     return JSON.parse(fs.readFileSync(file, "utf8")) as unknown;
+  }
+  if (/\.(ts|mts)$/.test(file)) {
+    const { createJiti } = await import("jiti");
+    const jiti = createJiti(import.meta.url, {
+      interopDefault: true,
+      alias: {
+        termcorr: path.join(PKG_ROOT, "dist/index.js"),
+      },
+    });
+    return jiti(file) as unknown;
   }
   const href = `${pathToFileURL(file).href}?t=${Date.now()}`;
   const mod: unknown = await import(href);
@@ -231,7 +243,7 @@ export async function loadUserConfig(opts: LoadUserConfigOptions): Promise<Resol
   const configFile = findConfigFile(cwd, opts.config);
   if (!configFile) {
     throw new Error(
-      `未找到 termcorr.config.js。请在工作目录放置配置，或使用 --config 指定。\n可用: ${CONFIG_NAMES.join(", ")}\n也可执行: termcorr init`,
+      `未找到 termcorr.config.ts。请在工作目录放置配置，或使用 --config 指定。\n可用: ${CONFIG_NAMES.join(", ")}\n也可执行: termcorr init`,
     );
   }
 
@@ -258,14 +270,20 @@ export async function loadUserConfig(opts: LoadUserConfigOptions): Promise<Resol
   const dict = resolveFrom(root, cfg.dict || cfg.dict_path);
   const trainConfig = resolveFrom(root, cfg.train?.config);
   const trainOutputDir = resolveFrom(root, cfg.train?.outputDir);
+  const importSource = resolveFrom(root, cfg.import?.source ?? cfg.importSource);
+  const importLimit = cfg.import?.limit ?? cfg.importLimit ?? null;
+  const lfDatasetDir = resolveFrom(root, cfg.llamafactory?.datasetDir ?? cfg.lfDatasetDir);
+  const lfDatasetInfo = cfg.llamafactory?.datasetInfo ?? cfg.lfDatasetInfo ?? "dataset_info.json";
+  const lfPrefix = cfg.llamafactory?.prefix ?? cfg.lfPrefix ?? "corr";
   const infer: InferConfig = cfg.infer ?? { backend: "rule" };
-  const split: Required<SplitConfig> = {
+  const split: ResolvedConfig["split"] = {
     unseenPairRatio: cfg.split?.unseenPairRatio ?? 0.1,
     seenPairEvalRatio: cfg.split?.seenPairEvalRatio ?? 0.1,
     minPairSizeForSeenEval: cfg.split?.minPairSizeForSeenEval ?? 2,
     keepRatio: cfg.split?.keepRatio ?? 0.02,
     maxKeep: cfg.split?.maxKeep ?? 400,
     maxUnseenPairs: cfg.split?.maxUnseenPairs ?? null,
+    maxTrain: cfg.split?.maxTrain ?? null,
     seed: cfg.split?.seed ?? 42,
   };
 
@@ -291,6 +309,11 @@ export async function loadUserConfig(opts: LoadUserConfigOptions): Promise<Resol
     split,
     trainConfig,
     trainOutputDir,
+    importSource,
+    importLimit,
+    lfDatasetDir,
+    lfDatasetInfo,
+    lfPrefix,
     paths: {
       dict,
       sft: path.join(outDir, "sft", "train.jsonl"),

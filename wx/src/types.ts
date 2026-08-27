@@ -1,7 +1,7 @@
 /**
  * termcorr 公共类型。
  *
- * 工作区 `termcorr.config.js` 应对齐 {@link UserConfig}。
+ * 工作区 `termcorr.config.ts` 应对齐 {@link UserConfig}。
  * 加载后的规范化结果是 {@link ResolvedConfig}，命令实现只依赖后者。
  */
 
@@ -168,6 +168,8 @@ export interface SplitConfig {
   maxKeep?: number;
   /** unseen 词对数量上限；null 表示不封顶。 */
   maxUnseenPairs?: number | null;
+  /** 划分完成后训练集条数上限（试跑用，如 1000）。 */
+  maxTrain?: number | null;
   seed?: number;
 }
 
@@ -227,6 +229,19 @@ export interface UserConfig {
   infer?: InferConfig;
   split?: SplitConfig;
   train?: TrainConfig;
+  /** 外部语料导入（import 命令） */
+  import?: { source?: string; limit?: number | null };
+  importSource?: string;
+  importLimit?: number | null;
+  /** LlamaFactory 数据集导出（export-lf 命令） */
+  llamafactory?: {
+    datasetDir?: string;
+    datasetInfo?: string;
+    prefix?: string;
+  };
+  lfDatasetDir?: string | null;
+  lfDatasetInfo?: string;
+  lfPrefix?: string;
 }
 
 export interface UserConfigContext {
@@ -300,11 +315,19 @@ export interface ResolvedConfig {
   rate: ResolvedRateConfig;
   sources: ResolvedSource[];
   infer: InferConfig;
-  split: Required<SplitConfig>;
+  split: Required<Omit<SplitConfig, "maxTrain" | "maxUnseenPairs">> & {
+    maxTrain: number | null;
+    maxUnseenPairs: number | null;
+  };
   /** 训练 yaml 绝对路径；没有则为 null。 */
   trainConfig: string | null;
   /** LlamaFactory 验证/预测 output_dir；没有则为 null。 */
   trainOutputDir: string | null;
+  importSource: string | null;
+  importLimit: number | null;
+  lfDatasetDir: string | null;
+  lfDatasetInfo: string;
+  lfPrefix: string;
   paths: OutputPaths;
 }
 
@@ -337,6 +360,35 @@ export interface GenerateFlags {
   source?: string;
   output?: string;
   format?: string;
+}
+
+export interface ImportFlags {
+  input?: string;
+  output?: string;
+  limit?: number | null;
+}
+
+export interface ImportResult {
+  input: string;
+  output: string;
+  count: number;
+}
+
+export interface ExportLfFlags {
+  datasetDir?: string;
+  datasetInfo?: string;
+  prefix?: string;
+  /** alpaca / sharegpt / alpaca,sharegpt；默认跟随配置，缺省为 alpaca（.jsonl） */
+  format?: string;
+}
+
+export interface ExportLfResult {
+  datasetDir: string;
+  datasetInfo: string;
+  prefix: string;
+  datasets: string[];
+  files: Record<string, string>;
+  formats: SftFormat[];
 }
 
 export interface SplitFlags {

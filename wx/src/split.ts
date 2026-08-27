@@ -9,8 +9,10 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { writeSplitSlicesDoc } from "./docs.js";
 import { loadDictionary } from "./dictionary.js";
 import { toShareGpt, wantsShareGpt } from "./format.js";
+import { pairKeyForRow } from "./normalize.js";
 import { readJsonOrJsonl, writeJsonl } from "./jsonl.js";
 import type {
   ResolvedConfig,
@@ -20,8 +22,8 @@ import type {
   SplitSliceCounts,
 } from "./types.js";
 
-export function pairKey(row: Pick<SftExample, "wrong" | "correct">): string {
-  return `${row.wrong || ""}\t${row.correct || ""}`;
+export function pairKey(row: Pick<SftExample, "wrong" | "correct" | "input" | "output">): string {
+  return pairKeyForRow(row);
 }
 
 export function freqBucket(freq: number): string {
@@ -238,6 +240,13 @@ export function splitDataset(cfg: ResolvedConfig, flags: SplitFlags = {}): Split
     withMeta(row, "eval_keep", String(row.id ?? `eval_keep-${i}`), freqMap),
   );
 
+  if (cfg.split.maxTrain != null && train.length > cfg.split.maxTrain) {
+    train = shuffle(train, seed + 501).slice(0, cfg.split.maxTrain);
+    train = assignIds(train, "train").map((row, i) =>
+      withMeta(row, "train", String(row.id ?? `train-${i}`), freqMap),
+    );
+  }
+
   const evalAll = [...evalSeen, ...evalUnseen];
   const trainOut = flags.trainOut || cfg.paths.trainSplit;
   const evalOut = flags.evalOut || cfg.paths.eval;
@@ -290,11 +299,13 @@ export function splitDataset(cfg: ResolvedConfig, flags: SplitFlags = {}): Split
   }
   fs.mkdirSync(path.dirname(cfg.paths.splitReport), { recursive: true });
   fs.writeFileSync(cfg.paths.splitReport, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+  const slicesDoc = writeSplitSlicesDoc(path.join(cfg.outDir, "reports"));
   console.log("[split]", JSON.stringify(report, null, 2));
   console.log(`[split] train=${trainOut}`);
   console.log(`[split] eval=${evalOut}`);
   console.log(`[split] eval_seen=${cfg.paths.evalSeen}`);
   console.log(`[split] eval_unseen=${cfg.paths.evalUnseen}`);
   console.log(`[split] eval_keep=${cfg.paths.evalKeep}`);
+  if (slicesDoc) console.log(`[split] doc=${slicesDoc}`);
   return report;
 }

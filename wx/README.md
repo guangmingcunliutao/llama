@@ -61,7 +61,7 @@ pnpm link --global   # 之后任意目录可直接敲 termcorr
 | 位置 | 放什么 |
 | --- | --- |
 | `wx/`（本仓库） | CLI 源码、配置模板。不要在这里 `init`，也不要把 `outDir` 指到这里 |
-| 你的工作目录 | `termcorr.config.js`、默认产物目录 `outputs/` |
+| 你的工作目录 | `termcorr.config.ts`、`split-slices.md`、默认产物目录 `outputs/` |
 | `outDir`（默认 `./outputs`） | `sft/`、`splits/`、`eval/`、`infer/`、`reports/` |
 | `~/.termcorr/cache` | 各 HTTP 源的检索缓存（`cache/<源 name>/`） |
 | `train/` | LlamaFactory 微调配置 |
@@ -83,6 +83,7 @@ outDir/
   infer/pred_unseen_pair.jsonl
   infer/pred_keep.jsonl
   reports/split.json              # 评估集建设报告
+  reports/split-slices.md         # seen / unseen / keep 说明（split 后写入）
   reports/metrics.json            # 指标（含 by_split / by_error_type / by_freq_bucket）
   reports/scored.jsonl            # 逐条对错，便于看失败案例
 ```
@@ -119,14 +120,14 @@ node E:/llama/wx/bin/termcorr.js generate
 node E:/llama/wx/bin/termcorr.js suite
 ```
 
-`init` 会写入 `package.json`，把本地 `wx` 链成依赖，所以 `pnpm generate` 实际跑的是 `termcorr generate`。`termcorr.config.js` 用 `defineConfig` 包一层，编辑器会限制字段名和 `sources` 的 `type` / `options`。
+`init` 会写入 `package.json`，把本地 `wx` 链成依赖，所以 `pnpm generate` 实际跑的是 `termcorr generate`。配置为 `termcorr.config.ts`，用 `defineConfig` 包一层；`split-slices.md` 说明 seen / unseen / keep。
 
 可选：`cd E:/llama/wx && pnpm link --global`，之后任意目录可直接敲 `termcorr`（需该目录已在 PATH 里，pnpm 全局 bin 一般是 `%LOCALAPPDATA%\pnpm`）。
 
 也可用 `-c` 指定配置：
 
 ```bash
-pnpm exec termcorr generate -c D:/work/termcorr.config.js
+pnpm exec termcorr generate -c D:/work/termcorr.config.ts
 ```
 
 ---
@@ -151,16 +152,16 @@ pnpm exec termcorr generate -c D:/work/termcorr.config.js
 
 | 选项 | 说明 |
 | --- | --- |
-| `-c, --config` | 配置文件。默认在当前目录找 `termcorr.config.js` / `.mjs` / `.cjs` / `.json` |
+| `-c, --config` | 配置文件。默认在当前目录找 `termcorr.config.ts` / `.mts` / `.mjs` / `.js` / `.json` |
 | `-h, --help` | 帮助 |
 
 ### `init`
 
-把模板拷到当前目录的 `termcorr.config.js`，并写入把本 CLI 链成本地依赖的 `package.json`。默认 `outDir` 为 `./outputs`。
+把模板拷到当前目录的 `termcorr.config.ts` 和 `split-slices.md`，并写入把本 CLI 链成本地依赖的 `package.json`。默认 `outDir` 为 `./outputs`。
 
 配置用 `defineConfig` 包一层，编辑器会按 `UserConfig` 提示字段、拦住拼错的键和 `sources[].type` 对应的 `options`：
 
-```js
+```ts
 import { defineConfig } from "termcorr";
 
 export default defineConfig({
@@ -194,11 +195,13 @@ export default defineConfig({
 
 把 `sft/train.jsonl` 划成训练集和三类评估集。若启用了 sharegpt，同时写出 `splits/train_sharegpt.jsonl`。
 
+**三类评估切片**（完整说明见 `split-slices.md` 或 `outputs/reports/split-slices.md`）：
+
 | 评估集 | 测什么 | 怎么抽 |
 | --- | --- | --- |
-| `eval_unseen_pair` | 没见过的词对能不能改 | 按错误类型分层，约 `unseenPairRatio`（默认 10%）的词对整组不进训练 |
-| `eval_seen_pair` | 见过的词对、新句子 | 词对至少 `minPairSizeForSeenEval` 条（默认 **2**）时抽约 `seenPairEvalRatio`，并至少留 1 条训练 |
-| `eval_keep` | 会不会把已经规范的句子改坏 | 从训练正句抽样，`input`=`output` |
+| `eval_unseen_pair` | **泛化**：没见过的词对能不能改 | 按错误类型分层，约 `unseenPairRatio`（默认 10%）的词对整组不进训练 |
+| `eval_seen_pair` | **同词对新句**：见过的词对、新句子 | 词对至少 `minPairSizeForSeenEval` 条（默认 **2**）时抽约 `seenPairEvalRatio`，并至少留 1 条训练 |
+| `eval_keep` | **过度编辑**：会不会把已经规范的句子改坏 | 从训练正句抽样，`input`=`output` |
 
 另外会：
 
@@ -274,7 +277,7 @@ node E:/llama/wx/bin/termcorr.js analyze --compare
 | `outputs/reports/compare.md` | 多轮模型对比 |
 | `outputs/reports/best/train_sft.yaml` | 综合分最高的那一轮训练配置 |
 
-工作区可在 `termcorr.config.js` 里设 `train.config` 和 `train.outputDir`。
+工作区可在 `termcorr.config.ts` 里设 `train.config` 和 `train.outputDir`。
 
 ### `sources`
 
@@ -317,7 +320,7 @@ sources: [
 ]
 ```
 
-完整人民网示例见 `templates/termcorr.config.js`。
+完整示例见 `templates/termcorr.config.ts`；评估切片见 `templates/split-slices.md`。
 
 ---
 

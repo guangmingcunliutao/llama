@@ -2,6 +2,9 @@
 export { defineConfig, loadUserConfig } from "./config.js";
 export { availableSourceTypes, SOURCE_TYPES } from "./sources/registry.js";
 export { toShareGpt } from "./format.js";
+export { normalizeRow, normalizeRows, readDatasetRows, pairKeyForRow, toLfShareGpt, toLfAlpaca } from "./normalize.js";
+export { importDataset } from "./importDataset.js";
+export { exportLf } from "./exportLf.js";
 export type {
   HttpSourceConfig,
   HttpSourceOptions,

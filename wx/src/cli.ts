@@ -6,9 +6,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { isInsideDir, loadUserConfig, packageRoot } from "./config.js";
+import { writeSplitSlicesDoc } from "./docs.js";
 import { analyze } from "./analyze.js";
 import { evaluate, evaluateAll, ruleBaseline, ruleBaselineAll } from "./evaluate.js";
+import { exportLf } from "./exportLf.js";
 import { generate } from "./generate.js";
+import { importDataset } from "./importDataset.js";
 import { infer } from "./infer.js";
 import { prepareDict } from "./prepare.js";
 import { availableSourceTypes } from "./sources/registry.js";
@@ -26,10 +29,13 @@ const HELP: Record<string, string> = {
   termcorr <command> --help
 
 命令:
-  init       在当前目录生成 termcorr.config.js
+  init       在当前目录生成 termcorr.config.ts
   prepare    从监测 Excel 洗出错误词/正确词字典
   generate   用正确词检索权威站点，生成错误句 / 正确句
+  import     从外部 json/jsonl 导入（自动识别 alpaca / sharegpt）
   split      划分训练集与评估集（seen / unseen / keep）
+  export-lf  将 split 产物导出到 LlamaFactory dataset_dir
+  pipeline   import + split + export-lf（一键数据准备）
   infer      推理（rule / http / file）
   evaluate   对比预测与 gold，写出指标
   analyze    LlamaFactory 验证/预测结束后写 md、给训练超参建议；可对比多轮并保存最优训练配置
@@ -37,7 +43,7 @@ const HELP: Record<string, string> = {
   sources    列出内置源类型（http / local_jsonl）
 
 全局选项:
-  -c, --config <file>   配置文件（默认扫描当前目录的 termcorr.config.*）
+  -c, --config <file>   配置文件（默认扫描 termcorr.config.ts 等）
   -h, --help            帮助
 
 示例:
@@ -50,10 +56,11 @@ const HELP: Record<string, string> = {
   termcorr evaluate --all
   termcorr analyze --dir E:/llama/test_stage1 --save --name test_stage1 --train-config ../train/llamafactory/train_sft.yaml
 `,
-  init: `init — 在当前目录生成 termcorr.config.js 和 package.json
+  init: `init — 在当前目录生成 termcorr.config.ts、split-slices.md 和 package.json
 
-package.json 会把本 CLI 链成本地依赖（file:…），pnpm install 之后可直接敲 termcorr，不必写 node。
+package.json 会把本 CLI 链成本地依赖（file:…），pnpm install 之后可直接敲 termcorr。
 默认 outDir 为 ./outputs。请再改 dict。
+split-slices.md 说明 seen / unseen / keep 三类评估切片的作用。
 
 选项:
   --force    允许覆盖已有配置；也允许在 CLI 仓库内生成（不推荐）
@@ -81,12 +88,45 @@ package.json 会把本 CLI 链成本地依赖（file:…），pnpm install 之�
   --output <file>         覆盖默认 outDir/sft/train.jsonl
   --format <list>         默认 alpaca；需要 ShareGPT 时用 alpaca,sharegpt
 `,
+  import: `import — 从外部语料导入为 alpaca 句对（sft/train.jsonl）
+
+自动识别：alpaca（instruction/input/output）、sharegpt（conversations/messages）。
+也支持扩展名为 .json 但实际按行存储的 jsonl。
+
+选项:
+  --input <file>    源文件（或配置 import.source）
+  --output <file>   覆盖 outDir/sft/train.jsonl
+  --limit <n>       最多导入 n 条（试跑/限量训练）
+`,
+  "export-lf": `export-lf — 将 split 后的 train/eval 写入 LlamaFactory 数据集目录
+
+默认写出 alpaca 格式 .jsonl，并合并 dataset_info.json。
+需要 sharegpt 时在配置 formats 或 --format 里加上 sharegpt。
+
+选项:
+  --dataset-dir <dir>   LlamaFactory 的 dataset_dir（或配置 llamafactory.datasetDir）
+  --prefix <name>       数据集名前缀，默认 corr
+  --format <list>       alpaca / sharegpt / alpaca,sharegpt
+`,
+  pipeline: `pipeline — 一键：import → split → export-lf
+
+等价于依次执行三条命令；适合从原始语料启动一轮试跑。
+
+选项:
+  --input <file>        源语料
+  --limit <n>           导入上限
+  --dataset-dir <dir>   LlamaFactory dataset_dir
+  --prefix <name>       导出前缀
+`,
   split: `split — 划分 train / eval_seen_pair / eval_unseen_pair / eval_keep
 
-eval_unseen_pair：整组词对不进训练，测能否改没见过的词对。
-eval_seen_pair：词对见过、句子没见过；词对至少 2 条才抽（可配 split.minPairSizeForSeenEval）。
-eval_keep：已是规范句，不应改动，测过度编辑。
-同一正句不会同时出现在训练和纠错评估集。样本带稳定 id、freq_bucket。
+三类评估切片（详见 split-slices.md 或 outputs/reports/split-slices.md）：
+
+  eval_seen_pair   词对在训练里见过、句子没见过 → 测同词对不同上下文
+  eval_unseen_pair 整组词对未进训练 → 测泛化（优先看这个）
+  eval_keep        input=output 的规范句 → 测会不会乱改（过度编辑）
+
+eval.jsonl = seen + unseen（不含 keep）。同一正句不会同时出现在训练和纠错评估里。
 
 选项:
   --input <file>       覆盖默认 sft/train.jsonl
@@ -206,17 +246,22 @@ function initWorkPackage(cwd: string): string {
 }
 
 function initConfig({ force = false, cwd = process.cwd() } = {}): string {
-  const dest = path.join(cwd, "termcorr.config.js");
+  const dest = path.join(cwd, "termcorr.config.ts");
   if (isInsideDir(packageRoot(), dest) && !force) {
     throw new Error("请勿在 CLI 仓库内生成配置。换到你的工作目录再执行 init，或加 --force。");
   }
   if (fs.existsSync(dest) && !force) {
     throw new Error(`已存在 ${dest}，如需覆盖请加 --force`);
   }
-  const template = fs.readFileSync(path.join(packageRoot(), "templates", "termcorr.config.js"), "utf8");
+  const template = fs.readFileSync(
+    path.join(packageRoot(), "templates", "termcorr.config.ts"),
+    "utf8",
+  );
   fs.writeFileSync(dest, template, "utf8");
+  const mdDest = writeSplitSlicesDoc(cwd);
   const pkgFile = initWorkPackage(cwd);
   console.log(`[init] 已写入 ${dest}`);
+  if (mdDest) console.log(`[init] 已写入 ${mdDest}`);
   console.log(`[init] 已写入 ${pkgFile}`);
   console.log(`[init] 请执行 pnpm install，之后可直接运行 termcorr generate`);
   return dest;
@@ -241,6 +286,9 @@ export async function main(argv: string[]): Promise<number> {
       output: { type: "string" },
       format: { type: "string" },
       input: { type: "string" },
+      limit: { type: "string" },
+      "dataset-dir": { type: "string" },
+      prefix: { type: "string" },
       "train-out": { type: "string" },
       "eval-out": { type: "string" },
       gold: { type: "string" },
@@ -295,6 +343,41 @@ export async function main(argv: string[]): Promise<number> {
       limitTerms: values["limit-terms"],
       source: values.source,
       output: values.output,
+      format: values.format,
+    });
+    return 0;
+  }
+
+  if (command === "import") {
+    importDataset(cfg, {
+      input: values.input,
+      output: values.output,
+      limit: values.limit != null ? Number(values.limit) : undefined,
+    });
+    return 0;
+  }
+
+  if (command === "export-lf") {
+    exportLf(cfg, {
+      datasetDir: values["dataset-dir"],
+      prefix: values.prefix,
+      format: values.format,
+    });
+    return 0;
+  }
+
+  if (command === "pipeline") {
+    importDataset(cfg, {
+      input: values.input,
+      limit: values.limit != null ? Number(values.limit) : undefined,
+    });
+    splitDataset(cfg, {
+      trainOut: values["train-out"],
+      evalOut: values["eval-out"],
+    });
+    exportLf(cfg, {
+      datasetDir: values["dataset-dir"],
+      prefix: values.prefix,
       format: values.format,
     });
     return 0;

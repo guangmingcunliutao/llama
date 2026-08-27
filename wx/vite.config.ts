@@ -30,7 +30,7 @@ export default defineConfig({
       fileName: (_format, name) => `${name}.js`,
     },
     rollupOptions: {
-      external: [...nodeExternals, "xlsx"],
+      external: [...nodeExternals, "xlsx", "jiti"],
       output: {
         // 让 dist/cli.js 可直接当命令执行（和 Vite 的 bin 一样带 shebang）
         banner: (chunk) => (chunk.name === "cli" ? "#!/usr/bin/env node" : ""),
