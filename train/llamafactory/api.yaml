@@ -1,0 +1,10 @@
+### 加载 SFT adapter 起 OpenAI 兼容 API，供 termcorr infer --backend http 评估。
+### 在 LlamaFactory 环境执行：llamafactory-cli api train/llamafactory/api.yaml
+### 默认监听 http://127.0.0.1:8000/v1/chat/completions
+
+model_name_or_path: /mnt/e/models/Qwen2.5-0.5B-Instruct
+adapter_name_or_path: /mnt/e/termcorr-out/llamafactory/sft
+template: qwen
+finetuning_type: lora
+trust_remote_code: true
+infer_backend: huggingface

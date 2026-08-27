@@ -1,0 +1,16 @@
+{
+  "name": "termcorr-work",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "node ./node_modules/termcorr/bin/termcorr.js generate",
+    "prepare": "node ./node_modules/termcorr/bin/termcorr.js prepare",
+    "split": "node ./node_modules/termcorr/bin/termcorr.js split",
+    "infer": "node ./node_modules/termcorr/bin/termcorr.js infer",
+    "evaluate": "node ./node_modules/termcorr/bin/termcorr.js evaluate",
+    "suite": "node ./node_modules/termcorr/bin/termcorr.js suite"
+  },
+  "devDependencies": {
+    "termcorr": "file:../wx"
+  }
+}

@@ -1,0 +1,10 @@
+# llama 仓库里不提交用户配置（init 生成的文件应留在工作目录）
+node_modules/
+dist/
+outputs/
+__pycache__/
+*.pyc
+.venv/
+*.log
+termcorr.config.js
+termcorr.config.mjs

@@ -1,0 +1,52 @@
+### 固定表述纠错 LoRA SFT
+### 先把 dataset_info.json 的 file_name 改成 termcorr split 产出的 splits/train.jsonl
+### 在能解析下方相对路径的目录执行：llamafactory-cli train train/llamafactory/train_sft.yaml
+
+### model — 改成你的基座路径
+model_name_or_path: /mnt/e/models/Qwen2.5-0.5B-Instruct
+trust_remote_code: true
+
+### method
+stage: sft
+do_train: true
+finetuning_type: lora
+lora_rank: 16
+lora_alpha: 32
+lora_dropout: 0.05
+lora_target: all
+
+### dataset — dataset_dir 指向本目录，dataset 名对应 dataset_info.json 的键
+### 用 ShareGPT 时改成 dataset: term_sft_sharegpt，并填 splits/train_sharegpt.jsonl
+dataset_dir: train/llamafactory
+dataset: term_sft
+template: qwen
+cutoff_len: 512
+max_samples: null
+overwrite_cache: true
+preprocessing_num_workers: 4
+dataloader_num_workers: 2
+
+### output — 建议写到 termcorr 的 outDir 下，不要写进 wx/
+output_dir: /mnt/e/termcorr-out/llamafactory/sft
+logging_steps: 10
+save_steps: 200
+plot_loss: true
+overwrite_output_dir: false
+save_only_model: false
+report_to: none
+
+### train
+per_device_train_batch_size: 2
+gradient_accumulation_steps: 4
+learning_rate: 1.0e-4
+num_train_epochs: 3.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.05
+bf16: true
+ddp_timeout: 180000000
+
+### eval — LlamaFactory 从训练集再切一份；正式指标用 termcorr evaluate
+val_size: 0.05
+per_device_eval_batch_size: 2
+eval_strategy: steps
+eval_steps: 200

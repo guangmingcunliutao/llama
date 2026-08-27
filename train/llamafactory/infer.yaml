@@ -1,0 +1,6 @@
+### 加载 SFT adapter 做交互。adapter 路径与 train_sft.yaml 的 output_dir 一致。
+model_name_or_path: /mnt/e/models/Qwen2.5-0.5B-Instruct
+adapter_name_or_path: /mnt/e/termcorr-out/llamafactory/sft
+template: qwen
+finetuning_type: lora
+trust_remote_code: true

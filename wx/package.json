@@ -1,0 +1,45 @@
+{
+  "name": "termcorr",
+  "version": "0.2.0",
+  "description": "固定表述纠错：检索权威站点生成 SFT 句对、划分评估集、评估与推理",
+  "type": "module",
+  "bin": {
+    "termcorr": "bin/termcorr.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "bin",
+    "templates",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "vite build && tsc -p tsconfig.json --emitDeclarationOnly",
+    "dev": "vite build --watch",
+    "termcorr": "node bin/termcorr.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "packageManager": "pnpm@10.14.0",
+  "engines": {
+    "node": ">=18"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "typescript": "^5.8.2",
+    "vite": "^6.2.2"
+  },
+  "dependencies": {
+    "xlsx": "^0.18.5"
+  }
+}
