@@ -107,8 +107,20 @@ function findConfigFile(cwd: string, explicit?: string): string | null {
     if (!fs.existsSync(file)) throw new Error(`找不到配置文件: ${file}`);
     return file;
   }
-  for (const name of CONFIG_NAMES) {
-    const file = path.join(cwd, name);
+
+  const candidates: string[] = [];
+  let dir = path.resolve(cwd);
+  for (let depth = 0; depth < 6; depth += 1) {
+    for (const name of CONFIG_NAMES) {
+      candidates.push(path.join(dir, name));
+      candidates.push(path.join(dir, "termcorr-work", name));
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+
+  for (const file of candidates) {
     if (fs.existsSync(file)) return file;
   }
   return null;
@@ -243,7 +255,15 @@ export async function loadUserConfig(opts: LoadUserConfigOptions): Promise<Resol
   const configFile = findConfigFile(cwd, opts.config);
   if (!configFile) {
     throw new Error(
-      `未找到 termcorr.config.ts。请在工作目录放置配置，或使用 --config 指定。\n可用: ${CONFIG_NAMES.join(", ")}\n也可执行: termcorr init`,
+      [
+        `未找到 termcorr.config.ts（当前目录: ${cwd}）。`,
+        "请任选其一：",
+        `  1) cd 到含 termcorr.config.ts 的工作目录（如 termcorr-work）`,
+        `  2) 加 -c 指定配置，例如:`,
+        `     node E:/wsl/llama/wx/bin/termcorr.js pipeline -c E:/wsl/LlamaFactory/termcorr-work/termcorr.config.ts`,
+        `  3) 执行 termcorr init 生成配置`,
+        `扫描文件名: ${CONFIG_NAMES.join(", ")}`,
+      ].join("\n"),
     );
   }
 

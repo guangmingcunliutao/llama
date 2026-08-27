@@ -6,7 +6,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { isInsideDir, loadUserConfig, packageRoot } from "./config.js";
-import { writeSplitSlicesDoc } from "./docs.js";
 import { analyze } from "./analyze.js";
 import { evaluate, evaluateAll, ruleBaseline, ruleBaselineAll } from "./evaluate.js";
 import { exportLf } from "./exportLf.js";
@@ -56,11 +55,19 @@ const HELP: Record<string, string> = {
   termcorr evaluate --all
   termcorr analyze --dir E:/llama/test_stage1 --save --name test_stage1 --train-config ../train/llamafactory/train_sft.yaml
 `,
-  init: `init — 在当前目录生成 termcorr.config.ts、split-slices.md 和 package.json
+  init: `init — 在当前目录生成 termcorr.config.ts、package.json、tsconfig.json
 
-package.json 会把本 CLI 链成本地依赖（file:…），pnpm install 之后可直接敲 termcorr。
-默认 outDir 为 ./outputs。请再改 dict。
-split-slices.md 说明 seen / unseen / keep 三类评估切片的作用。
+工作区通过 pnpm 链本地 termcorr，config 里:
+  import { defineConfig } from "termcorr"
+
+评估切片 seen / unseen / keep 说明见 llama/wx 仓库 docs/split-slices.md
+
+首次:
+  pnpm install
+
+运行:
+  pnpm pipeline
+  pnpm exec termcorr split
 
 选项:
   --force    允许覆盖已有配置；也允许在 CLI 仓库内生成（不推荐）
@@ -120,7 +127,7 @@ split-slices.md 说明 seen / unseen / keep 三类评估切片的作用。
 `,
   split: `split — 划分 train / eval_seen_pair / eval_unseen_pair / eval_keep
 
-三类评估切片（详见 split-slices.md 或 outputs/reports/split-slices.md）：
+三类评估切片（详见 llama/wx/docs/split-slices.md）：
 
   eval_seen_pair   词对在训练里见过、句子没见过 → 测同词对不同上下文
   eval_unseen_pair 整组词对未进训练 → 测泛化（优先看这个）
@@ -213,10 +220,11 @@ function stringMap(value: unknown): Record<string, string> {
 }
 
 /**
- * 工作区 package.json：把本地 CLI 链成依赖，之后可直接敲 termcorr（和 vite 一样走 node_modules/.bin）。
+ * 工作区 package.json：pnpm 链本地 termcorr，脚本走 node_modules/.bin/termcorr。
  */
 function initWorkPackage(cwd: string): string {
   const dest = path.join(cwd, "package.json");
+  const tsconfigDest = path.join(cwd, "tsconfig.json");
   const existing: unknown = fs.existsSync(dest) ? JSON.parse(fs.readFileSync(dest, "utf8")) : {};
   const prev = isRecord(existing) ? existing : {};
   const scripts = stringMap(prev.scripts);
@@ -226,14 +234,12 @@ function initWorkPackage(cwd: string): string {
     name: typeof prev.name === "string" ? prev.name : path.basename(cwd),
     private: true,
     type: typeof prev.type === "string" ? prev.type : "module",
+    packageManager: typeof prev.packageManager === "string" ? prev.packageManager : "pnpm@10.14.0",
     scripts: {
-      generate: "node ./node_modules/termcorr/bin/termcorr.js generate",
-      prepare: "node ./node_modules/termcorr/bin/termcorr.js prepare",
-      split: "node ./node_modules/termcorr/bin/termcorr.js split",
-      infer: "node ./node_modules/termcorr/bin/termcorr.js infer",
-      evaluate: "node ./node_modules/termcorr/bin/termcorr.js evaluate",
-      analyze: "node ./node_modules/termcorr/bin/termcorr.js analyze",
-      suite: "node ./node_modules/termcorr/bin/termcorr.js suite",
+      pipeline: "termcorr pipeline",
+      split: "termcorr split",
+      suite: "termcorr suite",
+      analyze: "termcorr analyze",
       ...scripts,
     },
     devDependencies: {
@@ -242,6 +248,27 @@ function initWorkPackage(cwd: string): string {
     },
   };
   fs.writeFileSync(dest, `${JSON.stringify(pkg, null, 2)}\n`, "utf8");
+  if (!fs.existsSync(tsconfigDest)) {
+    fs.writeFileSync(
+      tsconfigDest,
+      `${JSON.stringify(
+        {
+          compilerOptions: {
+            target: "ES2022",
+            module: "ESNext",
+            moduleResolution: "bundler",
+            strict: true,
+            noEmit: true,
+            skipLibCheck: true,
+          },
+          include: ["termcorr.config.ts"],
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+  }
   return dest;
 }
 
@@ -258,12 +285,10 @@ function initConfig({ force = false, cwd = process.cwd() } = {}): string {
     "utf8",
   );
   fs.writeFileSync(dest, template, "utf8");
-  const mdDest = writeSplitSlicesDoc(cwd);
   const pkgFile = initWorkPackage(cwd);
   console.log(`[init] 已写入 ${dest}`);
-  if (mdDest) console.log(`[init] 已写入 ${mdDest}`);
   console.log(`[init] 已写入 ${pkgFile}`);
-  console.log(`[init] 请执行 pnpm install，之后可直接运行 termcorr generate`);
+  console.log(`[init] 请执行 pnpm install，然后: pnpm pipeline`);
   return dest;
 }
 

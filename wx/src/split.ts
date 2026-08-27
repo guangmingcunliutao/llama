@@ -9,7 +9,6 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { writeSplitSlicesDoc } from "./docs.js";
 import { loadDictionary } from "./dictionary.js";
 import { toShareGpt, wantsShareGpt } from "./format.js";
 import { pairKeyForRow } from "./normalize.js";
@@ -299,13 +298,11 @@ export function splitDataset(cfg: ResolvedConfig, flags: SplitFlags = {}): Split
   }
   fs.mkdirSync(path.dirname(cfg.paths.splitReport), { recursive: true });
   fs.writeFileSync(cfg.paths.splitReport, `${JSON.stringify(report, null, 2)}\n`, "utf8");
-  const slicesDoc = writeSplitSlicesDoc(path.join(cfg.outDir, "reports"));
   console.log("[split]", JSON.stringify(report, null, 2));
   console.log(`[split] train=${trainOut}`);
   console.log(`[split] eval=${evalOut}`);
   console.log(`[split] eval_seen=${cfg.paths.evalSeen}`);
   console.log(`[split] eval_unseen=${cfg.paths.evalUnseen}`);
   console.log(`[split] eval_keep=${cfg.paths.evalKeep}`);
-  if (slicesDoc) console.log(`[split] doc=${slicesDoc}`);
   return report;
 }

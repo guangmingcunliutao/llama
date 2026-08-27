@@ -38,11 +38,23 @@ function datasetEntry(name: string, fileName: string, formatting: "sharegpt" | "
   };
 }
 
-function mergeDatasetInfo(infoPath: string, entries: Record<string, unknown>[]): void {
-  let base: Record<string, unknown> = {};
-  if (fs.existsSync(infoPath)) {
-    base = JSON.parse(fs.readFileSync(infoPath, "utf8")) as Record<string, unknown>;
+function readJsonObject(file: string): Record<string, unknown> {
+  if (!fs.existsSync(file)) return {};
+  const raw = fs.readFileSync(file, "utf8").trim();
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    console.warn(`[export-lf] ${file} 不是合法 JSON，将按空对象合并`);
+    return {};
   }
+}
+
+function mergeDatasetInfo(infoPath: string, entries: Record<string, unknown>[]): void {
+  let base = readJsonObject(infoPath);
   for (const entry of entries) {
     Object.assign(base, entry);
   }

@@ -16,6 +16,7 @@
   "files": [
     "dist",
     "bin",
+    "docs",
     "templates",
     "README.md"
   ],

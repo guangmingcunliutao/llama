@@ -61,7 +61,7 @@ pnpm link --global   # 之后任意目录可直接敲 termcorr
 | 位置 | 放什么 |
 | --- | --- |
 | `wx/`（本仓库） | CLI 源码、配置模板。不要在这里 `init`，也不要把 `outDir` 指到这里 |
-| 你的工作目录 | `termcorr.config.ts`、`split-slices.md`、默认产物目录 `outputs/` |
+| 你的工作目录 | `termcorr.config.ts`、默认产物目录 `outputs/` |
 | `outDir`（默认 `./outputs`） | `sft/`、`splits/`、`eval/`、`infer/`、`reports/` |
 | `~/.termcorr/cache` | 各 HTTP 源的检索缓存（`cache/<源 name>/`） |
 | `train/` | LlamaFactory 微调配置 |
@@ -83,7 +83,6 @@ outDir/
   infer/pred_unseen_pair.jsonl
   infer/pred_keep.jsonl
   reports/split.json              # 评估集建设报告
-  reports/split-slices.md         # seen / unseen / keep 说明（split 后写入）
   reports/metrics.json            # 指标（含 by_split / by_error_type / by_freq_bucket）
   reports/scored.jsonl            # 逐条对错，便于看失败案例
 ```
@@ -120,7 +119,7 @@ node E:/llama/wx/bin/termcorr.js generate
 node E:/llama/wx/bin/termcorr.js suite
 ```
 
-`init` 会写入 `package.json`，把本地 `wx` 链成依赖，所以 `pnpm generate` 实际跑的是 `termcorr generate`。配置为 `termcorr.config.ts`，用 `defineConfig` 包一层；`split-slices.md` 说明 seen / unseen / keep。
+`init` 会写入 `package.json`，把本地 `wx` 链成依赖，所以 `pnpm generate` 实际跑的是 `termcorr generate`。配置为 `termcorr.config.ts`，用 `defineConfig` 包一层。评估切片说明见本仓库 `docs/split-slices.md`。
 
 可选：`cd E:/llama/wx && pnpm link --global`，之后任意目录可直接敲 `termcorr`（需该目录已在 PATH 里，pnpm 全局 bin 一般是 `%LOCALAPPDATA%\pnpm`）。
 
@@ -157,7 +156,7 @@ pnpm exec termcorr generate -c D:/work/termcorr.config.ts
 
 ### `init`
 
-把模板拷到当前目录的 `termcorr.config.ts` 和 `split-slices.md`，并写入把本 CLI 链成本地依赖的 `package.json`。默认 `outDir` 为 `./outputs`。
+把模板拷到当前目录的 `termcorr.config.ts`，并写入把本 CLI 链成本地依赖的 `package.json`。默认 `outDir` 为 `./outputs`。
 
 配置用 `defineConfig` 包一层，编辑器会按 `UserConfig` 提示字段、拦住拼错的键和 `sources[].type` 对应的 `options`：
 
@@ -195,7 +194,7 @@ export default defineConfig({
 
 把 `sft/train.jsonl` 划成训练集和三类评估集。若启用了 sharegpt，同时写出 `splits/train_sharegpt.jsonl`。
 
-**三类评估切片**（完整说明见 `split-slices.md` 或 `outputs/reports/split-slices.md`）：
+**三类评估切片**（完整说明见 `docs/split-slices.md`）：
 
 | 评估集 | 测什么 | 怎么抽 |
 | --- | --- | --- |
@@ -320,7 +319,7 @@ sources: [
 ]
 ```
 
-完整示例见 `templates/termcorr.config.ts`；评估切片见 `templates/split-slices.md`。
+完整示例见 `templates/termcorr.config.ts`；评估切片见 `docs/split-slices.md`。
 
 ---
 
