@@ -35,6 +35,10 @@ packages:
     resolution: {integrity: sha512-w/XBfkibaTl3YDqASwfDUqkna4Z2p9cFSr1aHDt0WoMTECnRfBOv2WArlZILlqgWlmdIlALXGpM2AOhEk5W3IA==}
     engines: {node: '>=0.8'}
 
+  jiti@2.7.0:
+    resolution: {integrity: sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==}
+    hasBin: true
+
   ssf@0.11.2:
     resolution: {integrity: sha512-+idbmIXoYET47hH+d7dfm2epdOMUDjqcB4648sTZ+t2JwoyBFL/insLfB/racrDmsKB3diwsDA696pZMieAC5g==}
     engines: {node: '>=0.8'}
@@ -72,12 +76,15 @@ snapshots:
 
   frac@1.1.2: {}
 
+  jiti@2.7.0: {}
+
   ssf@0.11.2:
     dependencies:
       frac: 1.1.2
 
   termcorr@file:../wx:
     dependencies:
+      jiti: 2.7.0
       xlsx: 0.18.5
 
   wmf@1.0.2: {}

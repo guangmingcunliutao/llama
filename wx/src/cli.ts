@@ -48,7 +48,7 @@ const HELP: Record<string, string> = {
 示例:
   cd 工作目录
   termcorr init && pnpm install
-  termcorr prepare --input 错误表述数据.xlsx
+  termcorr prepare --input /path/to/监测数据.xlsx
   termcorr generate --limit-terms 1 --pairs-per-term 1
   termcorr suite
   termcorr infer --backend http --all
@@ -65,6 +65,8 @@ const HELP: Record<string, string> = {
 首次:
   pnpm install
 
+注意: 不要在 package.json 里把脚本命名为 prepare —— npm/pnpm 会在 install 时自动执行它。
+
 运行:
   pnpm pipeline
   pnpm exec termcorr split
@@ -77,7 +79,7 @@ const HELP: Record<string, string> = {
 按「错误词 / 建议更正词」拆格、去重、合并频次。正词短于 3 字、错词正词相同的行会丢掉。
 
 选项:
-  --input <file>           Excel 路径
+  --input <file>           Excel 路径（必填）
   --output <file>          默认 ./data/term_pairs.jsonl
   --min-correct-len <n>    正词最短长度，默认 3
   --force                  覆盖已有输出
@@ -228,6 +230,8 @@ function initWorkPackage(cwd: string): string {
   const existing: unknown = fs.existsSync(dest) ? JSON.parse(fs.readFileSync(dest, "utf8")) : {};
   const prev = isRecord(existing) ? existing : {};
   const scripts = stringMap(prev.scripts);
+  // npm/pnpm 会在 install 时自动执行名为 prepare 的生命周期脚本，勿与 termcorr prepare 混用
+  const { prepare: _lifecyclePrepare, ...safeScripts } = scripts;
   const devDependencies = stringMap(prev.devDependencies);
   const pkg = {
     ...prev,
@@ -240,7 +244,7 @@ function initWorkPackage(cwd: string): string {
       split: "termcorr split",
       suite: "termcorr suite",
       analyze: "termcorr analyze",
-      ...scripts,
+      ...safeScripts,
     },
     devDependencies: {
       ...devDependencies,

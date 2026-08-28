@@ -69,11 +69,12 @@ function headerIndex(header: unknown[]): Record<string, number> {
 }
 
 export function prepareDict(flags: PrepareDictFlags = {}, cwd = process.cwd()): PrepareDictReport {
-  const input = flags.input
-    ? path.resolve(cwd, flags.input)
-    : path.resolve(cwd, "错误表述数据.xlsx");
+  if (!flags.input?.trim()) {
+    throw new Error("缺少 --input：请指定监测 Excel 路径。");
+  }
+  const input = path.resolve(cwd, flags.input);
   if (!fs.existsSync(input)) {
-    throw new Error(`找不到 Excel: ${input}。请用 --input 指定。`);
+    throw new Error(`找不到 Excel: ${input}`);
   }
   const output = flags.output
     ? path.resolve(cwd, flags.output)

@@ -2,14 +2,12 @@
   "name": "termcorr-work",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@10.14.0",
   "scripts": {
-    "generate": "node ./node_modules/termcorr/bin/termcorr.js generate",
-    "prepare": "node ./node_modules/termcorr/bin/termcorr.js prepare",
-    "split": "node ./node_modules/termcorr/bin/termcorr.js split",
-    "infer": "node ./node_modules/termcorr/bin/termcorr.js infer",
-    "evaluate": "node ./node_modules/termcorr/bin/termcorr.js evaluate",
-    "analyze": "node ./node_modules/termcorr/bin/termcorr.js analyze",
-    "suite": "node ./node_modules/termcorr/bin/termcorr.js suite"
+    "pipeline": "termcorr pipeline",
+    "split": "termcorr split",
+    "suite": "termcorr suite",
+    "analyze": "termcorr analyze"
   },
   "devDependencies": {
     "termcorr": "file:../wx"
