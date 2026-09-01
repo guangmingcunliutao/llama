@@ -32,7 +32,7 @@ export default function OverviewPage() {
         title="工作台"
         description="从种子生成纠错句对，在本机启动 LlamaFactory 训练，再评估与量化导出。"
       />
-      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+      <Row gutter={[12, 12]}>
         <Col xs={24} md={8}>
           <Card hoverable onClick={() => navigate("/data")}>
             <Statistic title="词对" value={stats?.dict.rows ?? 0} />

@@ -22,6 +22,7 @@ import type { UploadProps } from "antd";
 import { App as AntdApp } from "antd";
 import { useCallback, useEffect, useState } from "react";
 import { useJob } from "../jobs/JobContext";
+import { ConfirmDangerButton } from "../ui/ConfirmDangerButton";
 import { LogCard } from "../ui/LogCard";
 import { PageHeader } from "../ui/PageHeader";
 
@@ -82,18 +83,32 @@ export default function DataPage() {
   }, [message]);
 
   const loadConfig = useCallback(async () => {
-    const res = await fetch("/api/config");
-    const body = (await res.json()) as { ok: boolean; data: Record<string, unknown> };
-    if (!res.ok) return;
+    const [cfgRes, provRes] = await Promise.all([fetch("/api/config"), fetch("/api/providers")]);
+    const body = (await cfgRes.json()) as { ok: boolean; data: Record<string, unknown> };
+    const provBody = (await provRes.json()) as {
+      ok: boolean;
+      data?: { providers?: Array<{ id: string; name: string; description: string; enabled?: boolean }>; instruction?: string };
+    };
+    if (!cfgRes.ok) return;
     const cfg = body.data ?? {};
-    const sources = Array.isArray(cfg.sources) ? (cfg.sources as SourceItem[]) : [];
-    setSourceOpts(sources);
+    const providers = provBody.data?.providers ?? [];
+    const sources: SourceItem[] = providers.map((p) => ({
+      name: p.id,
+      type: "http",
+      title: p.name,
+      description: p.description,
+      enabled: p.enabled,
+    }));
+    setSourceOpts(sources.length ? sources : Array.isArray(cfg.sources) ? (cfg.sources as SourceItem[]) : []);
     const rate = (cfg.rate ?? {}) as { requestsPerMinute?: number; jitterSec?: number };
     const sentence = (cfg.sentence ?? {}) as { minLen?: number; maxLen?: number };
     const formats = Array.isArray(cfg.formats)
       ? (cfg.formats as string[])
       : String(cfg.formats ?? "messages").split(/[,+\s]+/);
     const clean = Number(cfg.cleanRatio ?? 0.1);
+    const selected = (sources.length ? sources : (cfg.sources as SourceItem[] | undefined) ?? []).filter(
+      (s) => s.enabled !== false,
+    );
     form.setFieldsValue({
       pairsPerTerm: Number(cfg.pairsPerTerm ?? 3),
       maxWords: cfg.limitTerms == null ? 20 : Number(cfg.limitTerms),
@@ -105,8 +120,8 @@ export default function DataPage() {
       rpm: rate.requestsPerMinute ?? 5,
       jitterSec: rate.jitterSec ?? 2,
       formats: formats.filter(Boolean),
-      sources: sources.filter((s) => s.enabled !== false).map((s) => s.name),
-      instruction: String(cfg.instruction ?? ""),
+      sources: selected.map((s) => s.name),
+      instruction: String(provBody.data?.instruction || cfg.instruction || ""),
       output: "",
     });
   }, [form]);
@@ -176,7 +191,7 @@ export default function DataPage() {
         description="种子词对 + 权威站点检索 → 训练 JSONL。验证集单独再检索，不从训练集剥离句子。"
       />
 
-      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+      <Row gutter={[12, 12]}>
         <Col xs={24} md={8}>
           <Card>
             <Statistic title="词对字典" value={stats?.dict.rows ?? 0} suffix="条" />
@@ -203,7 +218,7 @@ export default function DataPage() {
         </Col>
       </Row>
 
-      <Card title="① 种子数据" style={{ marginBottom: 16 }}>
+      <Card title="① 种子数据">
         <Upload.Dragger {...uploadProps} disabled={uploading || job.busy}>
           <p className="ant-upload-drag-icon">
             <InboxOutlined />
@@ -216,7 +231,7 @@ export default function DataPage() {
       </Card>
 
       <Form form={form} layout="vertical">
-      <Card title="② 检索来源" style={{ marginBottom: 16 }}>
+      <Card title="② 检索来源">
           <Form.Item
             name="sources"
             extra="可多选。生成时按配置顺序补足句对缺口；语料不够时如实少写。"
@@ -236,7 +251,7 @@ export default function DataPage() {
           </Form.Item>
       </Card>
 
-      <Card title="③ 生成参数" style={{ marginBottom: 16 }}>
+      <Card title="③ 生成参数">
           <Row gutter={16}>
             <Col xs={24} md={8}>
               <Form.Item
@@ -315,7 +330,7 @@ export default function DataPage() {
       </Card>
       </Form>
 
-      <Card title="④ 生成" style={{ marginBottom: 16 }}>
+      <Card title="④ 生成">
         <Space wrap>
           <Button type="primary" disabled={job.busy || !stats?.dict.exists} onClick={() => void runGenerate()}>
             生成训练集
@@ -326,17 +341,13 @@ export default function DataPage() {
           >
             生成验证集
           </Button>
-          <Button danger disabled={!job.busy} onClick={() => void cancel()}>
-            停止
-          </Button>
+          <ConfirmDangerButton disabled={!job.busy} onConfirm={cancel} />
         </Space>
       </Card>
 
-      {job.error && !job.busy ? (
-        <Alert type="error" showIcon message={job.error} style={{ marginBottom: 16 }} />
-      ) : null}
+      {job.error && !job.busy ? <Alert type="error" showIcon message={job.error} /> : null}
 
-      <LogCard title={job.busy ? `运行中：${job.job}` : "任务日志"} lines={job.logs} />
+      <LogCard lines={job.logs} busy={job.busy} jobName={job.job} onStop={cancel} />
     </>
   );
 }

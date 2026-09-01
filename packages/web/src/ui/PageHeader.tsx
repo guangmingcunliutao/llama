@@ -1,6 +1,7 @@
-import { Typography } from "antd";
+import { Card, Typography } from "antd";
 import type { ReactNode } from "react";
 
+/** 各页共用的标题卡：说明短、边距小。 */
 export function PageHeader({
   title,
   description,
@@ -11,26 +12,20 @@ export function PageHeader({
   extra?: ReactNode;
 }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "flex-start",
-        gap: 16,
-        marginBottom: 20,
-      }}
-    >
-      <div>
-        <Typography.Title level={3} className="page-title">
-          {title}
-        </Typography.Title>
-        {description ? (
-          <Typography.Paragraph type="secondary" className="page-desc">
-            {description}
-          </Typography.Paragraph>
-        ) : null}
+    <Card size="small" className="page-hero">
+      <div className="page-hero-row">
+        <div>
+          <Typography.Title level={4} className="page-title">
+            {title}
+          </Typography.Title>
+          {description ? (
+            <Typography.Paragraph type="secondary" className="page-desc">
+              {description}
+            </Typography.Paragraph>
+          ) : null}
+        </div>
+        {extra}
       </div>
-      {extra}
-    </div>
+    </Card>
   );
 }

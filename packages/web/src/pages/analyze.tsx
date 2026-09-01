@@ -2,6 +2,7 @@
 import { Alert, Button, Card, Checkbox, Empty, Form, Input, Space } from "antd";
 import { useEffect, useState } from "react";
 import { useJob } from "../jobs/JobContext";
+import { ConfirmDangerButton } from "../ui/ConfirmDangerButton";
 import { LogCard } from "../ui/LogCard";
 import { PageHeader } from "../ui/PageHeader";
 
@@ -43,10 +44,8 @@ export default function AnalyzePage() {
         title="训练分析"
         description="读取 LlamaFactory 验证/预测目录（predict_results.json、generated_predictions.jsonl 等），给出超参建议，并可保存多轮对比。"
       />
-      {job.error && !job.busy ? (
-        <Alert type="error" showIcon message={job.error} style={{ marginBottom: 16 }} />
-      ) : null}
-      <Card title="分析参数" style={{ marginBottom: 16 }}>
+      {job.error && !job.busy ? <Alert type="error" showIcon message={job.error} /> : null}
+      <Card title="分析参数">
         <Form form={form} layout="vertical">
           <Form.Item name="dir" label="LlamaFactory 输出目录" rules={[{ required: true }]}>
             <Input placeholder="含 predict_results.json 的目录" />
@@ -73,14 +72,12 @@ export default function AnalyzePage() {
           <Button type="primary" disabled={job.busy} onClick={() => void run()}>
             开始分析
           </Button>
-          <Button danger disabled={!job.busy} onClick={() => void cancel()}>
-            停止
-          </Button>
+          <ConfirmDangerButton disabled={!job.busy} onConfirm={cancel} />
         </Space>
       </Card>
-      <Card title="分析报告" style={{ marginBottom: 16 }}>
+      <Card title="分析报告">
         {markdown ? (
-          <pre className="log-pre">{markdown}</pre>
+          <pre className="report-pre">{markdown}</pre>
         ) : (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -88,7 +85,7 @@ export default function AnalyzePage() {
           />
         )}
       </Card>
-      <LogCard title={job.busy ? `运行中：${job.job}` : "任务日志"} lines={job.logs} />
+      <LogCard lines={job.logs} busy={job.busy} jobName={job.job} onStop={cancel} />
     </>
   );
 }

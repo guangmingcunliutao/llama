@@ -1,0 +1,30 @@
+/** 侧栏品牌标，内联绘制，不依赖外部 svg 请求。 */
+export function BrandMark({ size = 28 }: { size?: number }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      viewBox="0 0 64 64"
+      aria-hidden
+    >
+      <rect width="64" height="64" rx="14" fill="#111111" />
+      <rect x="1" y="1" width="62" height="62" rx="13" fill="none" stroke="#262626" />
+      <circle cx="18" cy="40" r="3" fill="#8c8c8c" />
+      <circle cx="28" cy="28" r="3" fill="#8c8c8c" />
+      <path d="M18 40L28 28" stroke="#434343" strokeWidth="1.5" fill="none" />
+      <path
+        d="M14 46C22 44 26 34 34 30C42 26 48 22 52 14"
+        fill="none"
+        stroke="#1677ff"
+        strokeWidth="3"
+        strokeLinecap="round"
+      />
+      <circle cx="52" cy="14" r="3.5" fill="#1677ff" />
+      <path
+        d="M40 48h3.2l2.1 5.2 2.1-5.2H51V56h-2.2v-5.1L46.4 56h-2.2L42 50.9V56H40z"
+        fill="#ffffff"
+      />
+    </svg>
+  );
+}

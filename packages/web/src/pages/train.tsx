@@ -2,6 +2,7 @@
 import { Alert, Button, Card, Col, Form, Input, InputNumber, Row, Space } from "antd";
 import { useEffect, useState } from "react";
 import { useJob } from "../jobs/JobContext";
+import { ConfirmDangerButton } from "../ui/ConfirmDangerButton";
 import { LogCard } from "../ui/LogCard";
 import { PageHeader } from "../ui/PageHeader";
 
@@ -61,10 +62,8 @@ export default function TrainPage() {
         title="训练"
         description="写出 dataset_info.json 与训练 yaml，然后启动 llamafactory-cli train。请先在数据生成页得到训练集。"
       />
-      {job.error && !job.busy ? (
-        <Alert type="error" showIcon message={job.error} style={{ marginBottom: 16 }} />
-      ) : null}
-      <Card title="超参" style={{ marginBottom: 16 }} extra={yaml ? <span>配置：{yaml}</span> : null}>
+      {job.error && !job.busy ? <Alert type="error" showIcon message={job.error} /> : null}
+      <Card title="超参" extra={yaml ? <span>配置：{yaml}</span> : null}>
         <Form form={form} layout="vertical">
           <Row gutter={16}>
             <Col xs={24} md={12}>
@@ -108,12 +107,10 @@ export default function TrainPage() {
           <Button type="primary" disabled={job.busy} onClick={() => void run()}>
             开始训练
           </Button>
-          <Button danger disabled={!job.busy} onClick={() => void cancel()}>
-            停止
-          </Button>
+          <ConfirmDangerButton disabled={!job.busy} onConfirm={cancel} />
         </Space>
       </Card>
-      <LogCard title={job.busy ? `运行中：${job.job}` : "训练日志"} lines={job.logs} />
+      <LogCard lines={job.logs} busy={job.busy} jobName={job.job} onStop={cancel} />
     </>
   );
 }

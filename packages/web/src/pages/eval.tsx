@@ -2,6 +2,7 @@
 import { Alert, Button, Card, Col, Empty, Form, Input, Row, Select, Space, Switch } from "antd";
 import { useEffect, useState } from "react";
 import { useJob } from "../jobs/JobContext";
+import { ConfirmDangerButton } from "../ui/ConfirmDangerButton";
 import { LogCard } from "../ui/LogCard";
 import { PageHeader } from "../ui/PageHeader";
 
@@ -42,10 +43,8 @@ export default function EvalPage() {
         title="评估"
         description="对独立生成的验证集推理并打分。规则基线用于对照上界；http 可对接 LlamaFactory / vLLM 的 OpenAI 兼容接口。"
       />
-      {job.error && !job.busy ? (
-        <Alert type="error" showIcon message={job.error} style={{ marginBottom: 16 }} />
-      ) : null}
-      <Card title="推理" style={{ marginBottom: 16 }}>
+      {job.error && !job.busy ? <Alert type="error" showIcon message={job.error} /> : null}
+      <Card title="推理">
         <Form form={form} layout="vertical">
           <Row gutter={16}>
             <Col xs={24} md={8}>
@@ -83,14 +82,12 @@ export default function EvalPage() {
           <Button disabled={job.busy} onClick={() => void start("/api/jobs/evaluate")}>
             计算指标
           </Button>
-          <Button danger disabled={!job.busy} onClick={() => void cancel()}>
-            停止
-          </Button>
+          <ConfirmDangerButton disabled={!job.busy} onConfirm={cancel} />
         </Space>
       </Card>
-      <Card title="最近指标" style={{ marginBottom: 16 }}>
+      <Card title="最近指标">
         {metrics ? (
-          <pre className="log-pre">{JSON.stringify(metrics, null, 2)}</pre>
+          <pre className="report-pre">{JSON.stringify(metrics, null, 2)}</pre>
         ) : (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -98,7 +95,7 @@ export default function EvalPage() {
           />
         )}
       </Card>
-      <LogCard title={job.busy ? `运行中：${job.job}` : "任务日志"} lines={job.logs} />
+      <LogCard lines={job.logs} busy={job.busy} jobName={job.job} onStop={cancel} />
     </>
   );
 }

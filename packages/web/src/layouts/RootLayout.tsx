@@ -10,6 +10,7 @@ import { useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { JobProvider, useJob } from "../jobs/JobContext";
 import { sidebarItems } from "../menu/fromPages";
+import { BrandMark } from "../ui/BrandMark";
 import { AppearanceButton, ThemeProvider } from "../theme/ThemeProvider";
 
 const { Header, Sider, Content } = Layout;
@@ -50,7 +51,7 @@ function Shell({ children }: { children: ReactNode }) {
       >
         <div className="app-brand">
           <div className="app-brand-mark">
-            <img src="/favicon.svg" alt="" width={28} height={28} />
+            <BrandMark />
           </div>
           {collapsed ? null : (
             <div className="app-brand-text">

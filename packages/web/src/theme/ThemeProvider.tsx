@@ -55,6 +55,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
               headerBg: isDark ? "#141414" : "#ffffff",
               bodyBg: isDark ? "#0f0f0f" : "#f5f5f5",
             },
+            Card: {
+              headerHeight: 40,
+            },
             Menu: {
               darkItemBg: "#000000",
               darkSubMenuItemBg: "#000000",
@@ -64,7 +67,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
           },
         }}
       >
-        <AntdApp>{children}</AntdApp>
+        <AntdApp className="ant-app" style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
+          {children}
+        </AntdApp>
       </ConfigProvider>
     </Ctx.Provider>
   );

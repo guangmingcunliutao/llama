@@ -43,7 +43,7 @@ export default function QuantPage() {
         description="把本机 GGUF 或 HuggingFace 权重转成部署用量化格式。转换走系统里的 llama-quantize / 转换脚本，不把 llama.cpp 推进本仓库。"
       />
       <Form form={form} layout="vertical" initialValues={{ formats: ["Q4_K_M"], custom: "", dtype: "f16", requant: false, keepMid: false }}>
-      <Card title="① 源模型" style={{ marginBottom: 16 }}>
+      <Card title="① 源模型">
           <Form.Item name="source" label="本地路径" rules={[{ required: true, message: "填写 GGUF 或含 config.json 的目录" }]}>
             <Input placeholder="D:/models/Qwen2.5-0.5B 或 xxx.gguf" />
           </Form.Item>
@@ -52,7 +52,7 @@ export default function QuantPage() {
             <Typography.Text type="secondary">{detect}</Typography.Text>
           </Space>
       </Card>
-      <Card title="② 目标格式" style={{ marginBottom: 16 }}>
+      <Card title="② 目标格式">
           <Form.Item name="formats" label="预置量化类型">
             <Checkbox.Group options={PRESETS.map((name) => ({ label: name, value: name }))} />
           </Form.Item>
@@ -86,11 +86,12 @@ export default function QuantPage() {
         type="info"
         showIcon
         message="量化任务将调用本机 llama-quantize。请把可执行文件加入 PATH，或在设置里填写路径后再启动。"
-        style={{ marginBottom: 16 }}
       />
-      <Button type="primary" disabled>
-        开始量化（环境检测通过后开放）
-      </Button>
+      <Card size="small">
+        <Button type="primary" disabled>
+          开始量化（环境检测通过后开放）
+        </Button>
+      </Card>
     </>
   );
 }

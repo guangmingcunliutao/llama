@@ -4,6 +4,8 @@ import type { JobCommand, JobHub } from "../jobs/types.js";
 import type { AppContext } from "../appContext.js";
 import { persistGeneratePatch } from "../appContext.js";
 import { detectQuantSource } from "../datasets.js";
+import { listProviders } from "../routes/providers.js";
+import { shouldServeSpaIndex } from "../webStatic.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -116,5 +118,27 @@ describe("detectQuantSource", () => {
     fs.writeFileSync(gguf, "x");
     expect(detectQuantSource(gguf).kind).toBe("gguf");
     expect(detectQuantSource(dir).kind).toBe("hf-dir");
+  });
+});
+
+describe("listProviders", () => {
+  it("maps people_search to 人民网检索", () => {
+    const listed = listProviders({
+      sources: [{ name: "people_search", type: "http", options: { url: "http://x" } }],
+    });
+    expect(listed[0]).toMatchObject({
+      id: "people_search",
+      name: "人民网检索",
+    });
+    expect(listed[0]?.description).toContain("cpc.people.com.cn");
+  });
+});
+
+describe("shouldServeSpaIndex", () => {
+  it("does not treat hashed assets as pages", () => {
+    expect(shouldServeSpaIndex("/assets/index-abc.js")).toBe(false);
+    expect(shouldServeSpaIndex("/favicon.svg")).toBe(false);
+    expect(shouldServeSpaIndex("/data")).toBe(true);
+    expect(shouldServeSpaIndex("/api/jobs")).toBe(false);
   });
 });
