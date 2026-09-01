@@ -1,3 +1,4 @@
+/** 对独立验证集推理并计算指标。 */
 import { Alert, Button, Card, Col, Empty, Form, Input, Row, Select, Space, Switch } from "antd";
 import { useEffect, useState } from "react";
 import { useJob } from "../jobs/JobContext";

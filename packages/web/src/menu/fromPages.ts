@@ -1,3 +1,6 @@
+/**
+ * 按 pages 目录的 `export const menu` 生成侧栏。路由由文件名推导，不要在此写死 path。
+ */
 import type { MenuProps } from "antd";
 import { createElement } from "react";
 import { MENU_ICONS } from "./icons";

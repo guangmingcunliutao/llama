@@ -3,20 +3,22 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { groupByCorrect, loadDictionary, mergeTermPairs } from "../dictionary.js";
-import { parseFormats, toMessages } from "../format.js";
+import { parseFormats, toMessages, toShareGpt, wantsShareGpt } from "../format.js";
 import { generateEval } from "../generateEval.js";
 import { collectSentences } from "../generate.js";
 import { cleanSampleCount } from "../generateMix.js";
 import { interpolate } from "../interpolate.js";
 import { ExclusiveJob } from "../jobLock.js";
-import { countJsonl, readJsonl } from "../jsonl.js";
+import { countJsonl, readJsonl, readJsonOrJsonl } from "../jsonl.js";
 import { diffPairSets, fingerprintPairs } from "../seedFingerprint.js";
 import { leaksIntoTrain, normalizeSentence } from "../sentenceNorm.js";
 import { goodSentence, htmlToText, splitSentences } from "../text.js";
 import { ensureTrainYaml, startTrainFromConfig, writeDatasetInfo } from "../trainJob.js";
 import { parseTrainYaml, patchTrainYaml } from "../trainYaml.js";
 import { isRecord } from "../util.js";
-import { findRepoRoot, loadUserConfig } from "../config.js";
+import { findRepoRoot, loadUserConfig, normalizeSources } from "../config.js";
+import { sourceDisplay } from "../sources/display.js";
+import { selectSources } from "../sources/registry.js";
 
 describe("mergeTermPairs", () => {
   it("drops identical and empty pairs, merges freq", () => {
@@ -266,6 +268,63 @@ describe("findRepoRoot", () => {
   it("walks up to pnpm-workspace.yaml", () => {
     const root = findRepoRoot(path.join(process.cwd(), "packages", "core", "src"));
     expect(fs.existsSync(path.join(root, "pnpm-workspace.yaml"))).toBe(true);
+  });
+});
+
+describe("sourceDisplay", () => {
+  it("uses 人民网检索 copy for people_search", () => {
+    const shown = sourceDisplay({ name: "people_search" });
+    expect(shown.title).toBe("人民网检索");
+    expect(shown.description).toContain("cpc.people.com.cn");
+  });
+});
+
+describe("normalizeSources", () => {
+  it("fills display fields and keeps the config name", () => {
+    const sources = normalizeSources([
+      { name: "people_search", type: "http", options: { url: "http://example.test/s" } },
+    ]);
+    expect(sources[0]?.name).toBe("people_search");
+    expect(sources[0]?.title).toBe("人民网检索");
+    expect(sources[0]?.description).toContain("精确匹配");
+  });
+});
+
+describe("selectSources", () => {
+  it("filters by name among enabled sources", () => {
+    const sources = normalizeSources([
+      { name: "a", type: "http", options: { url: "http://a.test" } },
+      { name: "b", type: "http", enabled: false, options: { url: "http://b.test" } },
+    ]);
+    const cfg = { sources } as unknown as import("../types.js").ResolvedConfig;
+    expect(selectSources(cfg).map((s) => s.name)).toEqual(["a"]);
+    expect(selectSources(cfg, "a")[0]?.name).toBe("a");
+    expect(() => selectSources(cfg, "b")).toThrow(/找不到源/);
+  });
+});
+
+describe("sharegpt format", () => {
+  it("builds sharegpt turns", () => {
+    const row = toShareGpt({
+      instruction: "sys",
+      input: "bad",
+      output: "good",
+      id: "1",
+    });
+    expect(row.conversations.map((t) => t.from)).toEqual(["human", "gpt"]);
+    expect(wantsShareGpt(["messages", "sharegpt"])).toBe(true);
+  });
+});
+
+describe("jsonl helpers", () => {
+  it("reads json arrays and counts lines", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mt-jsonl-"));
+    const jsonl = path.join(dir, "a.jsonl");
+    fs.writeFileSync(jsonl, '{"a":1}\n{"a":2}\n', "utf8");
+    expect(countJsonl(jsonl)).toBe(2);
+    const json = path.join(dir, "b.json");
+    fs.writeFileSync(json, JSON.stringify([{ x: 1 }, { x: 2 }]), "utf8");
+    expect(readJsonOrJsonl(json)).toHaveLength(2);
   });
 });
 

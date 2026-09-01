@@ -1,3 +1,6 @@
+/**
+ * 把任务状态接到页面。任务进行中才轮询 /api/jobs。
+ */
 import { App as AntdApp } from "antd";
 import {
   createContext,

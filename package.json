@@ -11,7 +11,7 @@
     "mtrain": "node ./packages/cli/bin/mtrain.js",
     "webui": "pnpm --filter @model-training/server start",
     "dev": "pnpm --filter @model-training/web dev",
-    "test": "pnpm --filter @model-training/core test && pnpm --filter @model-training/web test",
+    "test": "pnpm --filter @model-training/core test && pnpm --filter @model-training/server test && pnpm --filter @model-training/web test",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",

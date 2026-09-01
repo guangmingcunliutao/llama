@@ -9,6 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { applyLegacyPeopleOptions, PEOPLE_SEARCH_HTTP } from "./sources/peopleDefaults.js";
+import { sourceDisplay } from "./sources/display.js";
 import { parseFormats } from "./format.js";
 import type {
   HttpSourceOptions,
@@ -215,10 +216,16 @@ export function normalizeSources(raw: unknown): ResolvedSource[] {
     const options = isRecord(item.options) ? item.options : {};
     let type = asSourceType(item.type);
 
+    const display = sourceDisplay({
+      name,
+      title: typeof item.title === "string" ? item.title : undefined,
+      description: typeof item.description === "string" ? item.description : undefined,
+    });
+
     if (!type && name === "people_search") {
       type = "http";
       const merged = applyLegacyPeopleOptions(PEOPLE_SEARCH_HTTP, options);
-      out.push({ name, type, enabled, options: merged });
+      out.push({ name, type, enabled, options: merged, ...display });
       console.warn(
         `[config] 源 ${name} 未写 type，已按旧版 people_search 展开。请改为 type: "http" 并写全 options。`,
       );
@@ -237,14 +244,14 @@ export function normalizeSources(raw: unknown): ResolvedSource[] {
       if (!isHttpOptions(options)) {
         throw new Error(`HTTP 源 ${name} 的 options.url 必填`);
       }
-      out.push({ name, type, enabled, options });
+      out.push({ name, type, enabled, options, ...display });
       continue;
     }
 
     if (!isLocalOptions(options)) {
       throw new Error(`local_jsonl 源 ${name} 的 options.path 必填`);
     }
-    out.push({ name, type, enabled, options });
+    out.push({ name, type, enabled, options, ...display });
   }
   return out;
 }

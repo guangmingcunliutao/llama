@@ -1,3 +1,6 @@
+/**
+ * 数据集状态与种子导入。Excel/CSV 走 prepareDict，jsonl 直接覆盖字典。
+ */
 import fs from "node:fs";
 import path from "node:path";
 import { countJsonl, loadUserConfig, prepareDict } from "@model-training/core";
@@ -40,4 +43,21 @@ export function saveSeedAndPrepare(opts: {
   }
   prepareDict({ input: opts.tmpFile, output: opts.dictPath, force: true }, opts.cwd);
   return { mode: "prepare", dict: opts.dictPath };
+}
+
+/** 根据路径判断量化源：GGUF 文件或 HuggingFace 目录。 */
+export function detectQuantSource(target: string): {
+  exists: boolean;
+  kind: "missing" | "hf-dir" | "gguf" | "file";
+  path: string;
+} {
+  const exists = fs.existsSync(target);
+  let kind: "missing" | "hf-dir" | "gguf" | "file" = "missing";
+  if (exists) {
+    const st = fs.statSync(target);
+    if (st.isDirectory()) kind = "hf-dir";
+    else if (target.toLowerCase().endsWith(".gguf")) kind = "gguf";
+    else kind = "file";
+  }
+  return { exists, kind, path: target };
 }

@@ -1,3 +1,7 @@
+/**
+ * 数据生成：上传种子、选择检索源、填写生成参数。
+ * 检索源的展示名来自配置 title/description，提交时仍用 name。
+ */
 import { InboxOutlined } from "@ant-design/icons";
 import {
   Alert,
@@ -38,6 +42,8 @@ interface DatasetStatus {
 interface SourceItem {
   name: string;
   type: string;
+  title?: string;
+  description?: string;
   enabled?: boolean;
 }
 
@@ -213,12 +219,17 @@ export default function DataPage() {
       <Card title="② 检索来源" style={{ marginBottom: 16 }}>
           <Form.Item
             name="sources"
-            extra="与 Python 项目一样可多选。生成时按顺序补足句对缺口。"
+            extra="可多选。生成时按配置顺序补足句对缺口；语料不够时如实少写。"
             rules={[{ required: true, message: "请至少选择一个检索源" }]}
           >
             <Checkbox.Group
               options={sourceOpts.map((s) => ({
-                label: `${s.name}（${s.type}）`,
+                label: (
+                  <span className="source-option">
+                    <strong>{s.title || s.name}</strong>
+                    {s.description ? <span>{s.description}</span> : null}
+                  </span>
+                ),
                 value: s.name,
               }))}
             />

@@ -96,6 +96,10 @@ export interface LocalJsonlSourceOptions {
 export interface SourceConfigBase {
   /** 日志、缓存子目录用的名字，同一配置里须唯一 */
   name: string;
+  /** 界面展示名；缺省时按 name 推导（人民网检索等） */
+  title?: string;
+  /** 界面说明，不参与检索逻辑 */
+  description?: string;
   enabled?: boolean;
 }
 
@@ -290,6 +294,8 @@ export interface ResolvedRateConfig {
 
 export interface ResolvedHttpSource {
   name: string;
+  title: string;
+  description: string;
   type: "http";
   enabled: boolean;
   options: HttpSourceOptions;
@@ -297,6 +303,8 @@ export interface ResolvedHttpSource {
 
 export interface ResolvedLocalSource {
   name: string;
+  title: string;
+  description: string;
   type: "local_jsonl";
   enabled: boolean;
   options: LocalJsonlSourceOptions;

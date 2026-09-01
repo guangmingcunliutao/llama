@@ -1,3 +1,4 @@
+/** 写出 LlamaFactory yaml 并启动 `llamafactory-cli train`。 */
 import { Alert, Button, Card, Col, Form, Input, InputNumber, Row, Space } from "antd";
 import { useEffect, useState } from "react";
 import { useJob } from "../jobs/JobContext";

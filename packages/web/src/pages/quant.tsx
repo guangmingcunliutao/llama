@@ -1,3 +1,4 @@
+/** GGUF / HF 路径检测与量化格式选择。 */
 import { Alert, Button, Card, Checkbox, Col, Form, Input, Row, Select, Space, Typography } from "antd";
 import { App as AntdApp } from "antd";
 import { useState } from "react";
@@ -19,13 +20,18 @@ export default function QuantPage() {
       return;
     }
     const res = await fetch(`/api/quant/detect?path=${encodeURIComponent(path)}`);
-    const body = (await res.json()) as { ok: boolean; exists?: boolean; kind?: string; error?: string };
+    const body = (await res.json()) as {
+      ok: boolean;
+      data?: { exists?: boolean; kind?: string };
+      error?: string;
+    };
     if (!body.ok) {
       message.error(body.error || "检测失败");
       return;
     }
-    const text = body.exists
-      ? `已识别：${body.kind === "gguf" ? "GGUF 文件" : body.kind === "hf-dir" ? "HF 模型目录" : "普通文件"}`
+    const info = body.data;
+    const text = info?.exists
+      ? `已识别：${info.kind === "gguf" ? "GGUF 文件" : info.kind === "hf-dir" ? "HF 模型目录" : "普通文件"}`
       : "路径不存在，请检查盘符与权限";
     setDetect(text);
   }

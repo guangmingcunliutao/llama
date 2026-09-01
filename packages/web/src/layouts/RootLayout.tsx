@@ -1,3 +1,7 @@
+/**
+ * 后台壳：左侧菜单 + 顶栏固定，只有右侧内容区滚动。
+ * 菜单项来自 pages 的 `export const menu`，不要在这里手写路由。
+ */
 import { MenuFoldOutlined, MenuUnfoldOutlined } from "@ant-design/icons";
 import type { MenuProps } from "antd";
 import { Button, Layout, Menu, Space, Tag } from "antd";
@@ -34,7 +38,7 @@ function Shell({ children }: { children: ReactNode }) {
   const selected = useMemo(() => selectedKeys(location.pathname, ITEMS), [location.pathname]);
 
   return (
-    <Layout style={{ minHeight: "100vh" }}>
+    <Layout className="app-frame">
       <Sider
         className="app-sider"
         collapsible
@@ -45,7 +49,9 @@ function Shell({ children }: { children: ReactNode }) {
         breakpoint="lg"
       >
         <div className="app-brand">
-          <div className="app-brand-mark">MT</div>
+          <div className="app-brand-mark">
+            <img src="/favicon.svg" alt="" width={28} height={28} />
+          </div>
           {collapsed ? null : (
             <div className="app-brand-text">
               <strong>模型训练</strong>
@@ -61,7 +67,7 @@ function Shell({ children }: { children: ReactNode }) {
           onClick={({ key }) => navigate(key)}
         />
       </Sider>
-      <Layout>
+      <Layout className="app-main">
         <Header className="app-header">
           <Space>
             <Button

@@ -20,6 +20,8 @@ export default defineConfig({
   sources: [
     {
       name: "people_search",
+      title: "人民网检索",
+      description: "检索 cpc.people.com.cn 文章标题与正文，按书写变体精确匹配含正确词的真实句子",
       type: "http",
       enabled: true,
       options: {

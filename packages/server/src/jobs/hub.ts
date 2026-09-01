@@ -1,3 +1,7 @@
+/**
+ * 进程内单槽任务：同一时刻只跑 generate / train 等之一。
+ * 快照给前端轮询；日志通过劫持 console 收集 CLI 风格输出。
+ */
 import { ExclusiveJob } from "@model-training/core";
 
 export interface JobSnapshot {

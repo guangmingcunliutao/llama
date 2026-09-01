@@ -1,3 +1,4 @@
+/** 读取 LlamaFactory 验证目录，给出分析报告。 */
 import { Alert, Button, Card, Checkbox, Empty, Form, Input, Space } from "antd";
 import { useEffect, useState } from "react";
 import { useJob } from "../jobs/JobContext";

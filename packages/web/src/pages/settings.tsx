@@ -1,4 +1,5 @@
-import { Button, Card, Form, Input, InputNumber, Select, Space } from "antd";
+/** 读写仓库根的 model-training.config.json。 */
+import { Button, Card, Form, Input, Select, Space } from "antd";
 import { App as AntdApp } from "antd";
 import { useEffect } from "react";
 import { PageHeader } from "../ui/PageHeader";

@@ -79,3 +79,9 @@ export function applyLegacyPeopleOptions(
     timeoutSec: legacy.timeout != null ? Number(legacy.timeout) : base.timeoutSec,
   };
 }
+
+/** 界面文案；检索逻辑仍用配置里的 `name`（people_search）。 */
+export const PEOPLE_SEARCH_DISPLAY = {
+  title: "人民网检索",
+  description: "检索 cpc.people.com.cn 文章标题与正文，按书写变体精确匹配含正确词的真实句子",
+} as const;
