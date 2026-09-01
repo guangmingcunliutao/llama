@@ -1,73 +1,35 @@
-# llama
+# model-training
 
-固定表述纠错分两块：
+固定表述纠错：从错误词/正确词种子生成训练与验证 JSONL，在本仓库用 CLI 或 Web 启动 LlamaFactory 训练，评估模型，并可把本机模型量化为 GGUF。
 
-- **整条链路（含训练在别的文件夹时怎么接）**：见 [`pipeline.md`](pipeline.md)
-- 数据工具：见 [`wx/README.md`](wx/README.md)
-- 本仓库里的 LlamaFactory 示例配置：见 [`train/README.md`](train/README.md)
-
-下面是本机环境安装备忘（WSL / LlamaFactory），与上面的数据流水线无关。
-
----
-
-## ubuntu 安装
+## 快速开始
 
 ```bash
-wsl --install -d Ubuntu-22.04
+pnpm install
+pnpm test
+pnpm build
+pnpm webui          # 浏览器打开终端里打印的地址（默认 127.0.0.1:5000）
+pnpm mtrain --help
 ```
 
-## ubuntu 进入
+配置与 Web 表单是同一份 `model-training.config.json`（gitignore，首次启动 Web 会写出默认值）。
+
+命令行与界面都可以直接开始训练（会 spawn `llamafactory-cli train`，需本机已安装 LlamaFactory 或设置 `LLAMAFACTORY_BIN`）：
 
 ```bash
-wsl -d Ubuntu-22.04
-# 版本
-hostnamectl
-# 默认版本
-wsl -l
-wsl --set-default Ubuntu-22.04
+pnpm mtrain generate
+pnpm mtrain generate-eval
+pnpm mtrain train
 ```
 
-## llamafactory 安装
-```bash
-# 依赖安装
-sudo apt-get update
-# 可以尝试不执行这一步，可能会报错，报错的话再执行这一步
-sudo apt-get install -y python3-distutils
-# nvidia 驱动确认
-nvidia-smi
-```
+更完整的操作见 [docs/使用说明.md](docs/使用说明.md)。
 
-## llamafactory 拉取
-```bash
-git clone --depth 1 -b "main" https://github.com/hiyouga/LlamaFactory.git
-```
+## 目录
 
-### 用 modelscope 启动
-```bash
-### 要进入 llamafactory 目录
-source finetune/bin/activate
-cd LlamaFactory
-export USE_MODELSCOPE_HUB=1 llamafactory-cli train my_configs/train_lora/train_stage1.yaml
-# 继续执行
-llamafactory-cli train my_configs/train_lora/qwen2.5-0.5b_lora_sft.yaml --resume_from_checkpoint my_outputs/qwen2.5-0.5b/lora/sft/checkpoint-15000
-### chat
-llamafactory-cli chat my_configs/inference/qwen2.5-0.5b_lora_sft.yaml
-### merge
-llamafactory-cli chat my_configs/merge_lora/qwen2.5-0.5b_lora_sft.yaml
-```
-
-### 配置项
-```yaml
-model_name_or_path: Qwen/Qwen2.5-0.5B-Instruct
-
-### model
-model_name_or_path: /home/tao/.cache/modelscope/models/Qwen--Qwen2.5-0.5B-Instruct/snapshots/master
-trust_remote_code: true
-
-### dataset
-template: qwen
-### 拷贝到当前目录下面来
-mkdir -p /mnt/c/Users/tao/models
-cp -a /home/tao/.cache/modelscope/models/Qwen--Qwen2.5-0.5B-Instruct/snapshots/master \
-  /mnt/c/Users/tao/models/Qwen2.5-0.5B-Instruct
-```
+| 路径 | 作用 |
+| --- | --- |
+| `packages/core` | 字典、生成、训练启动、评估核心 |
+| `packages/cli` | `mtrain` 命令 |
+| `packages/server` | Fastify：`/api` + 托管前端 |
+| `packages/web` | Vite + React + Ant Design（侧栏由 `pages` 的 `menu` 导出生成） |
+| `uploads/` `outputs/` `cache/` | 运行时数据，不提交 |

@@ -1,0 +1,108 @@
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+}
+
+.app-sider {
+  background: #000 !important;
+}
+
+.app-sider .ant-layout-sider-children {
+  background: #000 !important;
+}
+
+.app-sider .ant-menu {
+  background: #000 !important;
+}
+
+.app-sider .ant-menu-item-selected {
+  background: #1f1f1f !important;
+}
+
+.app-sider .ant-layout-sider-trigger {
+  background: #000 !important;
+  border-top: 1px solid #262626;
+}
+
+.app-brand {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+  color: #fff;
+  border-bottom: 1px solid #262626;
+}
+
+.app-brand-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: #1677ff;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+}
+
+.app-brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+
+.app-brand-text strong {
+  font-size: 14px;
+}
+
+.app-brand-text span {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.app-header {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-inline: 20px !important;
+  border-bottom: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+}
+
+.app-content {
+  padding: 20px 24px 32px;
+  min-height: calc(100vh - 56px);
+}
+
+.app-content-inner {
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.page-title {
+  margin: 0 0 4px !important;
+}
+
+.page-desc {
+  margin: 0 0 20px !important;
+}
+
+.log-pre {
+  max-height: 360px;
+  overflow: auto;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.stat-path {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+  word-break: break-all;
+  opacity: 0.65;
+}

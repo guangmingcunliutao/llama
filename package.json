@@ -1,0 +1,36 @@
+{
+  "name": "model-training",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.14.0",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "pnpm --filter @model-training/core build && pnpm --filter @model-training/web build && pnpm --filter @model-training/server build",
+    "mtrain": "node ./packages/cli/bin/mtrain.js",
+    "webui": "pnpm --filter @model-training/server start",
+    "dev": "pnpm --filter @model-training/web dev",
+    "test": "pnpm --filter @model-training/core test && pnpm --filter @model-training/web test",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "pnpm -r --filter \"./packages/**\" typecheck"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.35.0",
+    "@types/node": "^22.13.10",
+    "eslint": "^9.35.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.8.2",
+    "typescript-eslint": "^8.42.0"
+  }
+}

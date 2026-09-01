@@ -1,0 +1,9 @@
+dist
+node_modules
+outputs
+uploads
+quantized
+cache
+history
+pnpm-lock.yaml
+*.md

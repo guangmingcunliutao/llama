@@ -1,0 +1,16 @@
+{
+  "name": "@model-training/cli",
+  "version": "0.3.0",
+  "type": "module",
+  "bin": {
+    "mtrain": "./bin/mtrain.js"
+  },
+  "scripts": {
+    "build": "node -e \"process.exit(0)\"",
+    "mtrain": "node ./bin/mtrain.js",
+    "typecheck": "node -e \"process.exit(0)\""
+  },
+  "dependencies": {
+    "@model-training/core": "workspace:*"
+  }
+}
