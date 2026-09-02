@@ -62,7 +62,7 @@ export function validateModelSource(opts: { root: string; model: string; hub?: M
       return "当前填写的是本地路径，请改选「本地目录」";
     }
     if (!model.includes("/") && !model.includes("\\")) {
-      return "线上模型请填写仓库 ID，例如 Qwen/Qwen2.5-0.5B-Instruct";
+      return "线上模型请填写仓库 ID，例如 Qwen/Qwen3-0.6B";
     }
     return null;
   }

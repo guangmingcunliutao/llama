@@ -43,7 +43,7 @@ function emitProcessOutput(buf: Buffer, onLog?: (line: string) => void): void {
 }
 
 const DEFAULT_YAML = `### model
-model_name_or_path: Qwen/Qwen2.5-0.5B-Instruct
+model_name_or_path: Qwen/Qwen3-0.6B
 trust_remote_code: true
 
 ### method
@@ -58,7 +58,7 @@ lora_target: all
 ### dataset
 dataset: term_sft
 dataset_dir: ./outputs/lf
-template: qwen
+template: qwen3
 cutoff_len: 1024
 max_samples: 100000
 overwrite_cache: true

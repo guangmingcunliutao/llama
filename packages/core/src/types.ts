@@ -140,7 +140,7 @@ export interface SentenceConfig {
   maxLen?: number;
 }
 
-export type InferBackend = "rule" | "http" | "file";
+export type InferBackend = "rule" | "http" | "file" | "llamafactory";
 
 /** generate / split 可写出的训练语料格式。 */
 export type SftFormat = "alpaca" | "sharegpt" | "messages";
@@ -213,7 +213,7 @@ export type TrainKnobs = {
 export interface TrainConfig {
   /** 本轮实际使用的 LlamaFactory 训练 yaml（相对配置文件） */
   config?: string;
-  /** 验证/预测产物目录，对应 `analyze --dir` */
+  /** 训练 checkpoint / LoRA 目录（评估页加载模型用）。调参读的是 `outputs/lf-predict`，不要把这两处混成同一个路径。 */
   outputDir?: string;
 }
 
@@ -441,7 +441,14 @@ export interface InferFlags {
   backend?: string;
   url?: string;
   model?: string;
+  adapter?: string;
+  home?: string;
+  bin?: string;
+  hub?: string;
+  hfEndpoint?: string;
   all?: boolean;
+  signal?: AbortSignal;
+  onLog?: (line: string) => void;
 }
 
 export interface EvaluateFlags {

@@ -3,6 +3,7 @@ import { Alert, Button, Card, Checkbox, Col, Form, Input, Row, Select, Space, Ty
 import { App as AntdApp } from "antd";
 import { useState } from "react";
 import { PageHeader } from "../ui/PageHeader";
+import { PipelineStrip } from "../ui/PipelineStrip";
 
 export const menu = { title: "量化导出", icon: "ThunderboltOutlined", order: 50 };
 
@@ -40,8 +41,9 @@ export default function QuantPage() {
     <>
       <PageHeader
         title="量化导出"
-        description="把本机 GGUF 或 HuggingFace 权重转成部署用量化格式。转换走系统里的 llama-quantize / 转换脚本，不把 llama.cpp 推进本仓库。"
+        description="把合并后的权重转成 GGUF 等部署格式。纠错分数请看评估页。"
       />
+      <PipelineStrip />
       <Form form={form} layout="vertical" initialValues={{ formats: ["Q4_K_M"], custom: "", dtype: "f16", requant: false, keepMid: false }}>
       <Card title="① 源模型">
           <Form.Item name="source" label="本地路径" rules={[{ required: true, message: "填写 GGUF 或含 config.json 的目录" }]}>

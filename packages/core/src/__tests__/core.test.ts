@@ -27,6 +27,7 @@ import {
 import { ensureTrainYaml, startTrainFromConfig, writeDatasetInfo } from "../trainJob.js";
 import { parseTrainYaml, patchTrainYaml } from "../trainYaml.js";
 import { isRecord } from "../util.js";
+import type { SftExample } from "../types.js";
 import { findRepoRoot, loadUserConfig, normalizeSources } from "../config.js";
 import { locateInstallScript } from "../llamaFactoryInstall.js";
 import { sourceDisplay } from "../sources/display.js";
@@ -151,7 +152,7 @@ describe("train yaml", () => {
 
   it("quotes windows model paths and parses them back", () => {
     const file = "E:\\models\\Qwen2.5-0.5B-Instruct";
-    const next = patchTrainYaml("model_name_or_path: Qwen/Qwen2.5-0.5B-Instruct\n", {
+    const next = patchTrainYaml("model_name_or_path: Qwen/Qwen3-0.6B\n", {
       model_name_or_path: file,
     });
     expect(next).toContain("model_name_or_path: ");
@@ -332,8 +333,9 @@ describe("generate-eval", () => {
     const cfg = await loadUserConfig({ command: "generate-eval", cwd: dir });
     const result = await generateEval(cfg);
     expect(result.written).toBe(1);
-    const rows = readJsonl<{ output: string }>(cfg.paths.eval);
+    const rows = readJsonl<{ output: string; input: string }>(cfg.paths.eval);
     expect(rows[0]?.output).toBe(evalSent);
+    expect(rows[0]?.input).not.toBe(evalSent);
     expect(leaksIntoTrain(rows.map((r) => r.output), [trainSent])).toEqual([]);
   });
 });
@@ -416,7 +418,7 @@ describe("model source", () => {
     expect(parseModelHub("ms")).toBe("modelscope");
     expect(parseModelHub("hf")).toBe("huggingface");
     expect(parseModelHub("modelers")).toBe("openmind");
-    expect(inferModelHub("Qwen/Qwen2.5-0.5B-Instruct")).toBe("modelscope");
+    expect(inferModelHub("Qwen/Qwen3-0.6B")).toBe("modelscope");
     expect(inferModelHub("E:\\\\models\\\\qwen", "huggingface")).toBe("local");
   });
 
@@ -430,7 +432,7 @@ describe("model source", () => {
   });
 
   it("accepts an online repo id and sets hub env", () => {
-    expect(validateModelSource({ root: os.tmpdir(), model: "Qwen/Qwen2.5-0.5B-Instruct", hub: "modelscope" })).toBeNull();
+    expect(validateModelSource({ root: os.tmpdir(), model: "Qwen/Qwen3-0.6B", hub: "modelscope" })).toBeNull();
     const env = applyModelHubEnv(
       { USE_OPENMIND_HUB: "1", PATH: "/usr/bin" },
       { hub: "modelscope", cacheDir: "/data/.cache/models" },
@@ -447,6 +449,75 @@ describe("model source", () => {
     fs.writeFileSync(path.join(model, "config.json"), "{}\n", "utf8");
     const listing = listFsDir(dir);
     expect(listing.entries.some((item) => item.kind === "model" && item.name === "qwen")).toBe(true);
+  });
+});
+
+describe("llamafactory infer helpers", () => {
+  it("maps generated_predictions to {id, pred} in gold order", async () => {
+    const { lfPredsToRows, writePredictYaml, looksLikeLoraAdapter } = await import("../inferLf.js");
+    const sample = (id: string): SftExample => ({
+      id,
+      instruction: "",
+      input: "x",
+      output: "y",
+      error_type: "",
+      wrong: "",
+      correct: "",
+      source: "",
+      url: "",
+      article_id: "",
+    });
+    const rows = lfPredsToRows([sample("a"), sample("b")], [{ predict: "p1" }, { prediction: "p2" }]);
+    expect(rows).toEqual([
+      { id: "a", pred: "p1" },
+      { id: "b", pred: "p2" },
+    ]);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mt-pred-"));
+    fs.writeFileSync(path.join(dir, "adapter_config.json"), "{}\n", "utf8");
+    expect(looksLikeLoraAdapter(dir)).toBe(true);
+    const yaml = path.join(dir, "predict.yaml");
+    writePredictYaml({
+      file: yaml,
+      model: "Qwen/Qwen3-0.6B",
+      adapter: dir,
+      template: "qwen3",
+      datasetDir: dir,
+      outputDir: path.join(dir, "out"),
+      cutoffLen: 512,
+    });
+    const text = fs.readFileSync(yaml, "utf8");
+    expect(text).toMatch(/do_predict: true/);
+    expect(text).toMatch(/adapter_name_or_path:/);
+  });
+});
+
+describe("applyGoldPredMetrics", () => {
+  it("fills exact/copy from infer pred.jsonl when LF dump is missing", async () => {
+    const { applyGoldPredMetrics, loadLfMetrics } = await import("../lfMetrics.js");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mt-an-"));
+    fs.writeFileSync(
+      path.join(dir, "trainer_log.jsonl"),
+      `${JSON.stringify({ current_steps: 1, total_steps: 2 })}\n`,
+      "utf8",
+    );
+    const gold = path.join(dir, "eval.jsonl");
+    const pred = path.join(dir, "pred.jsonl");
+    fs.writeFileSync(
+      gold,
+      `${JSON.stringify({ input: "错句", output: "对句" })}\n${JSON.stringify({ input: "原样", output: "改好" })}\n`,
+      "utf8",
+    );
+    fs.writeFileSync(
+      pred,
+      `${JSON.stringify({ id: 0, pred: "对句" })}\n${JSON.stringify({ id: 1, pred: "原样" })}\n`,
+      "utf8",
+    );
+    const snap = loadLfMetrics(dir);
+    expect(snap.n_pred).toBe(0);
+    expect(applyGoldPredMetrics(snap, gold, pred)).toBe(true);
+    expect(snap.n_pred).toBe(2);
+    expect(snap.exact_match).toBe(0.5);
+    expect(snap.copy_input_rate).toBe(0.5);
   });
 });
 

@@ -25,6 +25,7 @@ import { useJob } from "../jobs/JobContext";
 import { ConfirmDangerButton } from "../ui/ConfirmDangerButton";
 import { LogCard } from "../ui/LogCard";
 import { PageHeader } from "../ui/PageHeader";
+import { PipelineStrip } from "../ui/PipelineStrip";
 
 export const menu = { title: "数据生成", icon: "DatabaseOutlined", order: 10 };
 
@@ -167,9 +168,9 @@ export default function DataPage() {
     },
   };
 
-  async function runGenerate(): Promise<void> {
+  async function generateBody() {
     const values = await form.validateFields();
-    await start("/api/jobs/generate", {
+    return {
       pairsPerTerm: values.pairsPerTerm,
       limitTerms: values.maxWords && values.maxWords > 0 ? values.maxWords : 0,
       cleanRatio: values.cleanRatioPct,
@@ -181,15 +182,24 @@ export default function DataPage() {
       output: values.output || undefined,
       sentence: { minLen: values.minLen, maxLen: values.maxLen },
       rate: { requestsPerMinute: values.rpm, jitterSec: values.jitterSec },
-    });
+    };
+  }
+
+  async function runGenerate(): Promise<void> {
+    await start("/api/jobs/generate", await generateBody());
+  }
+
+  async function runEvalGenerate(): Promise<void> {
+    await start("/api/jobs/generate-eval", await generateBody());
   }
 
   return (
     <>
       <PageHeader
         title="数据生成"
-        description="种子词对 + 权威站点检索 → 训练 JSONL。验证集单独再检索，不从训练集剥离句子。"
+        description="上传错词/正词表，检索真实句子做成训练和验证材料。每条样本：input 是待改的句子，output 是改对后的句子。"
       />
+      <PipelineStrip />
 
       <Row gutter={[12, 12]}>
         <Col xs={24} md={8}>
@@ -223,10 +233,8 @@ export default function DataPage() {
           <p className="ant-upload-drag-icon">
             <InboxOutlined />
           </p>
-          <p className="ant-upload-text">点击或拖拽上传监测表 / 词对文件</p>
-          <p className="ant-upload-hint">
-            xlsx / csv 需含「错误词」「建议更正词」列；jsonl / json 将直接作为字典使用。
-          </p>
+          <p className="ant-upload-text">把监测表拖到这里，或点击选择文件</p>
+          <p className="ant-upload-hint">Excel / CSV 需要有「错误词」「建议更正词」两列。</p>
         </Upload.Dragger>
       </Card>
 
@@ -234,7 +242,7 @@ export default function DataPage() {
       <Card title="② 检索来源">
           <Form.Item
             name="sources"
-            extra="可多选。生成时按配置顺序补足句对缺口；语料不够时如实少写。"
+            extra="可多选。先用第一个来源，不够再用后面的。检索不到就少写，不会编造句子。"
             rules={[{ required: true, message: "请至少选择一个检索源" }]}
           >
             <Checkbox.Group
@@ -252,28 +260,31 @@ export default function DataPage() {
       </Card>
 
       <Card title="③ 生成参数">
+          <Typography.Paragraph type="secondary">
+            训练集和验证集用同一套参数。验证集句子不会和训练重复。每条都有待改句（input）和规范句（output）；再按比例混入本身正确、不应改动的句子。
+          </Typography.Paragraph>
           <Row gutter={16}>
             <Col xs={24} md={8}>
               <Form.Item
                 name="cleanRatioPct"
                 label="混入正常样本比例（%）"
-                extra="input=output 的正确句，避免逢句必改"
+                extra="input 与 output 相同的正确句，避免模型见句就改。"
               >
                 <InputNumber min={0} max={100} style={{ width: "100%" }} />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
-              <Form.Item name="pairsPerTerm" label="每个词对最小句子数">
+              <Form.Item name="pairsPerTerm" label="每个词对最小句子数" extra="每个词至少写几条错句。越大数据越多。">
                 <InputNumber min={1} max={20} style={{ width: "100%" }} />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
-              <Form.Item name="maxWords" label="词条数上限（0=全部）" extra="试跑建议先填 20">
+              <Form.Item name="maxWords" label="词条数上限（0=全部）" extra="试跑可填 20，全量填 0。">
                 <InputNumber min={0} style={{ width: "100%" }} />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
-              <Form.Item name="maxPages" label="每词最大翻页数">
+              <Form.Item name="maxPages" label="每词最大翻页数" extra="检索翻几页。语料不够时不会凭空多写。">
                 <InputNumber min={1} max={20} style={{ width: "100%" }} />
               </Form.Item>
             </Col>
@@ -324,9 +335,6 @@ export default function DataPage() {
               </Form.Item>
             </Col>
           </Row>
-        <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-          多检索源按缺口补足：先由第一个源尽力检索，不足再调用后续源。语料不够时如实少写，不虚构句子。
-        </Typography.Paragraph>
       </Card>
       </Form>
 
@@ -337,7 +345,7 @@ export default function DataPage() {
           </Button>
           <Button
             disabled={isBusy("generate-eval") || !stats?.train.exists}
-            onClick={() => void start("/api/jobs/generate-eval")}
+            onClick={() => void runEvalGenerate()}
           >
             生成验证集
           </Button>

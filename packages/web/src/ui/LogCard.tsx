@@ -6,9 +6,9 @@ export const JOB_LABEL: Record<string, string> = {
   generate: "数据生成",
   "generate-eval": "验证集生成",
   train: "训练",
-  infer: "推理",
-  evaluate: "评估",
-  analyze: "分析",
+  infer: "模型评估",
+  evaluate: "打分",
+  analyze: "调参分析",
   "lf-install": "安装 LlamaFactory",
 };
 
@@ -56,7 +56,7 @@ export function LogCard({
         <pre ref={preRef} className="log-pre">
           {lines.length
             ? lines.join("\n")
-            : "# 空闲。启动生成 / 训练 / 评估后，输出会写在这里。\n# 全站共用同一任务槽，切到其他页看到的是同一份日志。"}
+            : "# 空闲。开始生成、训练或评估后，日志会出现在这里。\n"}
         </pre>
       </div>
     </Card>

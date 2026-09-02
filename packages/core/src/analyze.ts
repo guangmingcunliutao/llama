@@ -11,7 +11,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { loadLfMetrics, rankingScore, type LfSnapshot } from "./lfMetrics.js";
+import { applyGoldPredMetrics, loadLfMetrics, rankingScore, type LfSnapshot } from "./lfMetrics.js";
 import { asNumber, parseTrainYaml, patchTrainYaml, type TrainKnobs } from "./trainYaml.js";
 import type { AnalyzeFlags, ConfigSnapshot, Leaderboard, ResolvedConfig, RunRecord, Suggestion } from "./types.js";
 
@@ -46,7 +46,8 @@ function resolveOutputDir(cfg: ResolvedConfig, flags: AnalyzeFlags): string | nu
   if (flags.dir) {
     return path.isAbsolute(flags.dir) ? flags.dir : path.resolve(cfg.cwd, flags.dir);
   }
-  return cfg.trainOutputDir;
+  /** 默认读评估页 LlamaFactory predict 目录，不要落到 train.outputDir（checkpoint）。 */
+  return path.join(cfg.outDir, "lf-predict");
 }
 
 export function snapshotConfig(
@@ -237,7 +238,10 @@ function verdict(snap: LfSnapshot): string {
   const rouge = snap.rougel ?? 0;
   const exact = snap.exact_match ?? 0;
   const parts: string[] = [];
-  if (snap.n_pred) parts.push(`共 ${snap.n_pred} 条预测`);
+  if (!snap.n_pred) {
+    return "没有逐条预测，无法统计整句一致 / 复述输入 / 重复生成。lf-predict 里若只有 trainer_log.jsonl（进度日志），那三项会显示成空，并不是模型真的全是 0%。请先完成评估；有 outputs/infer/pred.jsonl 时会自动用来算这三项。";
+  }
+  parts.push(`共 ${snap.n_pred} 条预测`);
   if (snap.bleu4 != null) parts.push(`BLEU-4 ${num(snap.bleu4)}，ROUGE-L ${num(snap.rougel)}`);
   parts.push(`整句完全一致 ${pct(exact)}，原样复述输入 ${pct(copy)}，重复生成 ${pct(repeat)}`);
   if (rouge >= 70 && exact < 0.2) {
@@ -509,7 +513,7 @@ function buildRun(cfg: ResolvedConfig, flags: AnalyzeFlags, snap: LfSnapshot, ou
 
 /** 分析 LlamaFactory 验证/预测目录，可选保存为一次 run，并更新对比榜 / 最优配置。 */
 export function analyze(cfg: ResolvedConfig, flags: AnalyzeFlags = {}): RunRecord | null {
-  if (flags.compare && !flags.save && !flags.dir && !cfg.trainOutputDir) {
+  if (flags.compare && !flags.save && !flags.dir) {
     const runs = listRuns(cfg.paths.runsDir);
     const board = updateLeaderboard(cfg, runs);
     console.log(`[analyze] best=${board.best ?? "—"} compare=${cfg.paths.compare}`);
@@ -519,11 +523,12 @@ export function analyze(cfg: ResolvedConfig, flags: AnalyzeFlags = {}): RunRecor
   const outputDir = resolveOutputDir(cfg, flags);
   if (!outputDir) {
     throw new Error(
-      "请用 --dir 指向 LlamaFactory 验证/预测的 output_dir（含 predict_results.json 或 generated_predictions.jsonl），或在配置里写 train.outputDir。",
+      "请用 --dir 指向评估写出的预测目录（默认 outputs/lf-predict，内含 predict_results.json 或 generated_predictions.jsonl）。不要填 outputs/train。",
     );
   }
 
   const snap = loadLfMetrics(outputDir);
+  if (!snap.n_pred) applyGoldPredMetrics(snap, cfg.paths.eval, cfg.paths.pred);
   const run = buildRun(cfg, flags, snap, path.resolve(outputDir));
   const md = renderAnalysisMarkdown(run);
 

@@ -22,7 +22,7 @@ export default function SettingsPage() {
           dict: cfg.dict ?? "./data/term_pairs.jsonl",
           cacheDir: cfg.cacheDir ?? "./cache",
           instruction: cfg.instruction ?? "",
-          inferBackend: infer.backend ?? "rule",
+          inferBackend: infer.backend && infer.backend !== "rule" ? infer.backend : "llamafactory",
           inferUrl: infer.http?.url ?? "",
           inferModel: infer.http?.model ?? "",
           trainConfig: train.config ?? "./outputs/llamafactory/train_sft.yaml",
@@ -73,7 +73,7 @@ export default function SettingsPage() {
 
   return (
     <>
-      <PageHeader title="设置" description="与 CLI 共用同一份 JSON。这里改完即可被 generate / train / evaluate 读取。" />
+      <PageHeader title="设置" description="这里改的是和命令行共用的那份配置文件。一般不用天天动。" />
       <Card>
         <Form form={form} layout="vertical">
           <Form.Item name="outDir" label="产物目录 outDir">
@@ -88,12 +88,13 @@ export default function SettingsPage() {
           <Form.Item name="instruction" label="默认系统提示词">
             <Input.TextArea rows={3} />
           </Form.Item>
-          <Form.Item name="inferBackend" label="默认推理后端">
+          <Form.Item name="inferBackend" label="默认推理后端" extra="评估页主按钮固定用训练模型；规则基线仅作对照。">
             <Select
               options={[
-                { value: "rule", label: "rule" },
-                { value: "http", label: "http" },
-                { value: "file", label: "file" },
+                { value: "llamafactory", label: "LlamaFactory（训练模型）" },
+                { value: "http", label: "HTTP（OpenAI 兼容）" },
+                { value: "file", label: "只导出样本" },
+                { value: "rule", label: "规则对照（不加载模型）" },
               ]}
             />
           </Form.Item>
@@ -106,7 +107,11 @@ export default function SettingsPage() {
           <Form.Item name="trainConfig" label="训练 yaml">
             <Input />
           </Form.Item>
-          <Form.Item name="trainOutputDir" label="训练输出目录">
+          <Form.Item
+            name="trainOutputDir"
+            label="训练输出目录"
+            extra="训练结果文件夹，给评估页加载模型。调参不要选这里，调参选评估写出的预测文件夹。"
+          >
             <Input />
           </Form.Item>
           <Form.Item name="lfDatasetDir" label="LlamaFactory dataset_dir">

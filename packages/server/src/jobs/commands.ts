@@ -59,9 +59,17 @@ const generateEvalCommand: JobCommand = {
     }
     return null;
   },
-  async execute(app, job) {
+  async execute(app, job, body) {
+    persistGeneratePatch(app, body);
     const latest = await loadUserConfig({ command: "generate-eval", cwd: app.dataRoot() });
-    await generateEval(latest, { signal: job.signal });
+    await generateEval(latest, {
+      pairsPerTerm: asFlag(body.pairsPerTerm),
+      limitTerms: asFlag(body.limitTerms ?? body.maxWords),
+      cleanRatio: asFlag(body.cleanRatio),
+      maxPages: asFlag(body.maxPages),
+      sources: asStringList(body.sources),
+      signal: job.signal,
+    });
   },
 };
 
@@ -70,7 +78,7 @@ const trainCommand: JobCommand = {
   async validate(app, body) {
     const cfg = await loadUserConfig({ command: "train", cwd: app.dataRoot() });
     if (!fs.existsSync(cfg.paths.sft)) {
-      return `没有训练集 ${cfg.paths.sft}，请先在「数据生成」页生成`;
+      return `没有训练句子 ${cfg.paths.sft}，请先在「数据」页生成`;
     }
     const detect = detectLlamaFactory({
       home: asFlag(body.home) ?? cfg.lfHome,
@@ -109,19 +117,62 @@ const trainCommand: JobCommand = {
   },
 };
 
+function inferJobBackend(body: Record<string, unknown>): string {
+  if (body.baseline === true) return "rule";
+  const backend = asFlag(body.backend);
+  if (backend === "http" || backend === "file" || backend === "llamafactory") return backend;
+  return "llamafactory";
+}
+
 const inferCommand: JobCommand = {
   name: "infer",
-  async validate() {
+  async validate(app, body) {
+    const cfg = await loadUserConfig({ command: "infer", cwd: app.dataRoot() });
+    const gold = cfg.paths.eval;
+    if (!fs.existsSync(gold)) {
+      return `没有验证集 ${gold}，请先在「数据生成」页生成验证集`;
+    }
+    const backend = inferJobBackend(body);
+    if (backend === "llamafactory") {
+      const detect = detectLlamaFactory({
+        home: asFlag(body.home) ?? cfg.lfHome,
+        bin: asFlag(body.bin) ?? cfg.lfBin,
+      });
+      if (!detect.ok) return detect.errors.join("\n");
+    }
+    if (backend === "http" && !asFlag(body.url) && !cfg.infer.http?.url) {
+      return "http 推理需要填写接口 URL";
+    }
     return null;
   },
-  async execute(app, _job, body) {
-    const latest = await loadUserConfig({ command: "infer", cwd: app.dataRoot() });
-    await infer(latest, {
-      backend: asFlag(body.backend),
+  async execute(app, job, body) {
+    const backend = inferJobBackend(body);
+    const adapter = asFlag(body.adapter);
+    const raw = app.readConfigFile();
+    const prevTrain = isJsonObject(raw.train) ? raw.train : {};
+    const prevInfer = isJsonObject(raw.infer) ? raw.infer : {};
+    app.writeConfigFile({
+      ...raw,
+      infer: { ...prevInfer, backend },
+      ...(adapter
+        ? { train: { ...prevTrain, outputDir: adapter } }
+        : {}),
+    });
+    const cfg = await loadUserConfig({ command: "infer", cwd: app.dataRoot() });
+    await infer(cfg, {
+      backend,
       url: asFlag(body.url),
       model: asFlag(body.model),
-      all: body.all === true,
+      adapter,
+      home: asFlag(body.home) ?? cfg.lfHome ?? undefined,
+      bin: asFlag(body.bin) ?? cfg.lfBin ?? undefined,
+      hub: asFlag(body.hub) ?? cfg.lfHub,
+      all: body.all !== false,
+      signal: job.signal,
+      onLog: job.onLog,
     });
+    evaluate(cfg, { all: true });
+    job.onLog("[infer] 已根据预测计算指标（reports/metrics.json）");
   },
 };
 

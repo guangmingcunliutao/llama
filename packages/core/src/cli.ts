@@ -38,9 +38,9 @@ const HELP: Record<string, string> = {
   split          划分训练集与评估集（seen / unseen / keep）
   export-lf      将 split 产物导出到 LlamaFactory dataset_dir
   pipeline       import + split + export-lf（一键数据准备）
-  infer          推理（rule / http / file）
-  evaluate       对比预测与 gold，写出指标
-  analyze        LlamaFactory 验证/预测结束后写 md、给训练超参建议
+  infer          评估推理（llamafactory / http / rule / file）
+  evaluate       对比预测与 gold，写出纠错指标
+  analyze        读评估预测目录，写超参建议（不跑模型）
   suite          split + 基线推理 + 评估（不跑 generate）
   sources        列出内置源类型（http / local_jsonl）
 
@@ -152,9 +152,10 @@ eval.jsonl = seen + unseen（不含 keep）。同一正句不会同时出现在�
   infer: `infer — 对评估集推理，写出 {id, pred}
 
 backend:
-  rule   把 input 里的 wrong 换成 correct（规则基线）
-  http   调 OpenAI 兼容 chat/completions（system=instruction，user=input）
-  file   只导出待推理样本
+  rule          把 input 里的 wrong 换成 correct（规则基线，不加载模型）
+  llamafactory  用本机 LlamaFactory 对验证集 batch predict（LoRA/基座）
+  http          调 OpenAI 兼容 chat/completions
+  file          只导出待推理样本
 
 选项:
   --backend <name>
@@ -162,7 +163,8 @@ backend:
   --input <file>    覆盖评估集
   --output <file>   覆盖 infer/pred.jsonl
   --url <url>       覆盖 infer.http.url
-  --model <name>    覆盖 infer.http.model
+  --model <name>    覆盖 infer.http.model 或 LlamaFactory 基座
+  --adapter <dir>   LoRA 输出目录（默认 train.outputDir）
 `,
   evaluate: `evaluate — 对比 gold 与 pred
 
@@ -176,15 +178,16 @@ backend:
   --all             评估全部切片（需已有对应 pred）
   --baseline        先用规则替换写出 pred，再评估
 `,
-  analyze: `analyze — 分析 LlamaFactory 验证/预测输出，给出训练超参建议
+  analyze: `analyze — 读评估预测目录，给出下一轮训练超参（不加载模型）
 
-读 output_dir 里的 predict_results.json / all_results.json / generated_predictions.jsonl
-（也可以是 trainer_state.json 的 eval_loss）。不调 HTTP 推理接口。
+默认 --dir 为 outputs/lf-predict（评估页 LlamaFactory predict 写出）。
+读 predict_results.json / all_results.json / generated_predictions.jsonl
+（也可以是 trainer_state.json 的 eval_loss）。不调推理、不算 seen/unseen/keep。
 写出 reports/analysis.md，并在该目录旁再写一份 analysis.md。
 --save 会记下本轮训练 yaml，对比多轮后把综合分最高的训练配置拷到 reports/best/。
 
 选项:
-  --dir <path>           LlamaFactory 验证或 predict 的输出目录
+  --dir <path>           预测输出目录（不要填 outputs/train）
   --train-config <yaml>  本轮实际使用的 LlamaFactory 训练配置
   --name <id>            run 名称
   --note <text>          备注
@@ -195,7 +198,7 @@ backend:
   suite: `suite — 划分评估集 + 推理 + 评估（不跑 generate）
 
 默认用规则基线。模型评估时加 --backend http。
-不会自动 analyze（analyze 读的是 LlamaFactory 验证产物）。
+不会自动 analyze（analyze 读的是预测目录，不是训练 checkpoint）。
 
 选项:
   --backend <name>  rule（默认）或 http
@@ -331,6 +334,7 @@ export async function main(argv: string[]): Promise<number> {
       backend: { type: "string" },
       url: { type: "string" },
       model: { type: "string" },
+      adapter: { type: "string" },
       "train-config": { type: "string" },
       "lf-home": { type: "string" },
       "lf-bin": { type: "string" },
@@ -392,6 +396,8 @@ export async function main(argv: string[]): Promise<number> {
     await generateEval(cfg, {
       dict: values.dict,
       source: values.source,
+      pairsPerTerm: values["pairs-per-term"],
+      limitTerms: values["limit-terms"],
     });
     return 0;
   }
@@ -483,6 +489,7 @@ export async function main(argv: string[]): Promise<number> {
       backend: values.backend,
       url: values.url,
       model: values.model,
+      adapter: values.adapter,
       all: values.all,
     });
     return 0;

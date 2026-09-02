@@ -321,7 +321,7 @@ export async function loadUserConfig(opts: LoadUserConfigOptions): Promise<Resol
   const lfHfEndpoint = (cfg.llamafactory?.hfEndpoint ?? "").trim() || null;
   const lfModelCacheDir =
     resolveFrom(root, cfg.llamafactory?.modelCacheDir) || path.join(root, ".cache", "models");
-  const infer: InferConfig = cfg.infer ?? { backend: "rule" };
+  const infer: InferConfig = cfg.infer ?? { backend: "llamafactory" };
   const split: ResolvedConfig["split"] = {
     unseenPairRatio: cfg.split?.unseenPairRatio ?? 0.1,
     seenPairEvalRatio: cfg.split?.seenPairEvalRatio ?? 0.1,

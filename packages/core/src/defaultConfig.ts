@@ -35,6 +35,6 @@ export function defaultUserConfig(): UserConfig {
       },
     ],
     rate: { requestsPerMinute: 5, jitterSec: 2 },
-    infer: { backend: "rule" },
+    infer: { backend: "llamafactory" },
   };
 }

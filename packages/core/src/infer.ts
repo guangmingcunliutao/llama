@@ -1,18 +1,20 @@
 /**
  * 对评估集推理。
  * rule：按词对替换，作为对照基线。
- * http：OpenAI 兼容 chat/completions（可接 vLLM / LlamaFactory API）。
- * file：只把样本落到 pred 路径，交给外部脚本。
+ * llamafactory：本机 LlamaFactory batch predict。
+ * http：OpenAI 兼容 chat/completions。
+ * file：只把样本落到 pred 路径。
  */
 import fs from "node:fs";
 import { listEvalSlices } from "./evaluate.js";
 import { readJsonOrJsonl, writeJsonl } from "./jsonl.js";
 import type { InferBackend, InferFlags, PredictionRow, ResolvedConfig, SftExample } from "./types.js";
+import { inferLlamaFactorySlice } from "./inferLf.js";
 
 function asBackend(value: string | undefined, fallback: InferBackend): InferBackend {
-  if (value === "rule" || value === "http" || value === "file") return value;
+  if (value === "rule" || value === "http" || value === "file" || value === "llamafactory") return value;
   if (!value) return fallback;
-  throw new Error(`未知推理后端 ${value}，可选 rule / http / file`);
+  throw new Error(`未知推理后端 ${value}，可选 rule / llamafactory / http / file`);
 }
 
 interface ChatCompletionResponse {
@@ -65,6 +67,10 @@ async function inferFile(
 ): Promise<string> {
   const samples = readJsonOrJsonl<SftExample>(input);
 
+  if (backend === "llamafactory") {
+    return inferLlamaFactorySlice(cfg, input, output, flags);
+  }
+
   if (backend === "file") {
     writeJsonl(output, samples);
     console.log(`[infer] backend=file 已写出待推理样本 ${samples.length} -> ${output}`);
@@ -73,6 +79,9 @@ async function inferFile(
 
   const preds: PredictionRow[] = [];
   if (backend === "rule") {
+    console.log(
+      "[infer] 规则基线：按词对把错词换成正词，不加载训练模型。要用 LoRA/基座请把后端改成 LlamaFactory。",
+    );
     for (const [i, g] of samples.entries()) {
       preds.push({ id: g.id ?? i, pred: rulePred(g) });
     }
@@ -95,7 +104,7 @@ async function inferFile(
 
 /** 写出 infer/pred.jsonl，每行 {id, pred}。`--all` 时对所有评估切片各写一份。 */
 export async function infer(cfg: ResolvedConfig, flags: InferFlags = {}): Promise<string> {
-  const backend = asBackend(flags.backend, cfg.infer.backend ?? "rule");
+  const backend = asBackend(flags.backend, "llamafactory");
   if (flags.all) {
     const paths: string[] = [];
     for (const slice of listEvalSlices(cfg)) {

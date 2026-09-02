@@ -1,98 +1,121 @@
-/** 对独立验证集推理并计算指标。 */
-import { Alert, Button, Card, Col, Empty, Form, Input, Row, Select, Space, Switch } from "antd";
+/** 用训练后的模型对验证集推理并打分。 */
+import { Alert, Button, Card, Collapse, Empty, Form, Input, Space, Typography } from "antd";
+import { App as AntdApp } from "antd";
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useJob } from "../jobs/JobContext";
 import { ConfirmDangerButton } from "../ui/ConfirmDangerButton";
 import { LogCard } from "../ui/LogCard";
 import { PageHeader } from "../ui/PageHeader";
+import { PipelineStrip } from "../ui/PipelineStrip";
 
 export const menu = { title: "评估", icon: "ExperimentOutlined", order: 30 };
 
 export default function EvalPage() {
+  const navigate = useNavigate();
+  const { message } = AntdApp.useApp();
   const { job, start, cancel, isBusy } = useJob(["infer", "evaluate"]);
   const [form] = Form.useForm();
   const [metrics, setMetrics] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
-    void fetch("/api/config")
-      .then((res) => res.json())
-      .then((body: { data?: { infer?: { backend?: string; http?: { url?: string; model?: string } } } }) => {
-        const infer = body.data?.infer ?? {};
-        form.setFieldsValue({
-          backend: infer.backend ?? "rule",
-          url: infer.http?.url ?? "",
-          model: infer.http?.model ?? "",
-          all: true,
-        });
+    void (async () => {
+      const [cfgRes, reportRes] = await Promise.all([fetch("/api/config"), fetch("/api/reports")]);
+      const cfgBody = (await cfgRes.json()) as {
+        data?: { train?: { outputDir?: string } };
+      };
+      const reportBody = (await reportRes.json()) as { data?: { metrics?: Record<string, unknown> | null } };
+      form.setFieldsValue({
+        adapter: cfgBody.data?.train?.outputDir ?? "./outputs/train",
       });
-    void fetch("/api/reports")
-      .then((res) => res.json())
-      .then((body: { data?: { metrics?: Record<string, unknown> | null } }) => {
-        setMetrics(body.data?.metrics ?? null);
-      });
+      setMetrics(reportBody.data?.metrics ?? null);
+    })();
   }, [form, job.busy]);
 
-  async function runInfer(): Promise<void> {
-    const values = await form.validateFields();
-    await start("/api/jobs/infer", values);
+  async function runModelEval(): Promise<void> {
+    const adapter = String(form.getFieldValue("adapter") ?? "").trim();
+    if (!adapter) {
+      message.warning("请填写训练输出目录");
+      return;
+    }
+    await start("/api/jobs/infer", {
+      backend: "llamafactory",
+      adapter,
+      all: true,
+    });
   }
 
   return (
     <>
       <PageHeader
         title="评估"
-        description="对独立生成的验证集推理并打分。规则基线用于对照上界；http 可对接 LlamaFactory / vLLM 的 OpenAI 兼容接口。"
+        description="用训练后的模型改验证集句子，计算纠错分数。日常点「开始评估」即可。改下一轮超参请去「调参」。"
       />
+      <PipelineStrip />
       {job.error && !job.busy ? <Alert type="error" showIcon message={job.error} /> : null}
-      <Card title="推理">
-        <Form form={form} layout="vertical">
-          <Row gutter={16}>
-            <Col xs={24} md={8}>
-              <Form.Item name="backend" label="后端">
-                <Select
-                  options={[
-                    { value: "rule", label: "rule（词对替换基线）" },
-                    { value: "http", label: "http（OpenAI 兼容）" },
-                    { value: "file", label: "file（只导出待推理样本）" },
-                  ]}
-                />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={10}>
-              <Form.Item name="url" label="接口 URL">
-                <Input placeholder="http://127.0.0.1:8000/v1/chat/completions" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={6}>
-              <Form.Item name="model" label="模型名">
-                <Input />
-              </Form.Item>
-            </Col>
-            <Col span={24}>
-              <Form.Item name="all" label="评估全部切片" valuePropName="checked">
-                <Switch />
-              </Form.Item>
-            </Col>
-          </Row>
+      <Card title="训练模型">
+        <Form form={form} layout="vertical" initialValues={{ adapter: "./outputs/train" }}>
+          <Form.Item
+            name="adapter"
+            label="训练输出目录"
+            extra="一般是 outputs/train。目录里有 adapter_config.json 时按 LoRA 加载。"
+          >
+            <Input placeholder="./outputs/train" />
+          </Form.Item>
         </Form>
-        <Space>
-          <Button type="primary" disabled={isBusy("infer")} onClick={() => void runInfer()}>
-            开始推理
+        <Typography.Paragraph type="secondary">
+          加载该目录中的模型，对验证集做生成，写出预测和 metrics.json。
+        </Typography.Paragraph>
+        <Space wrap>
+          <Button type="primary" htmlType="button" disabled={isBusy("infer")} onClick={() => void runModelEval()}>
+            开始评估
           </Button>
-          <Button disabled={isBusy("evaluate")} onClick={() => void start("/api/jobs/evaluate")}>
-            计算指标
+          <Button htmlType="button" onClick={() => navigate("/analyze")}>
+            下一步：调参
           </Button>
           <ConfirmDangerButton disabled={!job.busy} onConfirm={cancel} />
         </Space>
+        <Collapse
+          style={{ marginTop: 16 }}
+          items={[
+            {
+              key: "more",
+              label: "已有预测时仅打分 / 规则上界（对照）",
+              children: (
+                <Space direction="vertical" size={12} style={{ width: "100%" }}>
+                  <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+                    已有预测时仅打分：不加载模型，只用已有 pred.jsonl 重新算分。规则上界：按词表把错词换成正词，用来估计上限，会覆盖页面上的模型分数。
+                  </Typography.Paragraph>
+                  <Space wrap>
+                    <Button
+                      htmlType="button"
+                      disabled={isBusy("evaluate")}
+                      onClick={() => void start("/api/jobs/evaluate")}
+                    >
+                      已有预测时仅打分
+                    </Button>
+                    <Button
+                      htmlType="button"
+                      disabled={isBusy("infer")}
+                      onClick={() => void start("/api/jobs/infer", { backend: "rule", baseline: true, all: true })}
+                    >
+                      规则上界（对照）
+                    </Button>
+                  </Space>
+                </Space>
+              ),
+            },
+          ]}
+        />
       </Card>
-      <Card title="最近指标">
+      <Card title="纠错指标">
+        <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
+          exact_match：整句与标准答案一致。term_fix_rate：该改的词改对了。copy_input_rate：原样复述错句。keep：本身正确的句子不应被改坏。
+        </Typography.Paragraph>
         {metrics ? (
           <pre className="report-pre">{JSON.stringify(metrics, null, 2)}</pre>
         ) : (
-          <Empty
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description="还没有 metrics.json。请先在数据页生成验证集，再用上方后端完成推理后点「计算指标」。"
-          />
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有指标。请先有验证集和训练产出，再点「开始评估」。" />
         )}
       </Card>
       <LogCard lines={job.logs} busy={job.busy} jobName={job.job} onStop={cancel} />

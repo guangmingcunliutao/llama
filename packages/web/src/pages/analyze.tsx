@@ -1,14 +1,17 @@
-/** 读取 LlamaFactory 验证目录，给出分析报告。 */
-import { Alert, Button, Card, Checkbox, Empty, Form, Input, Space } from "antd";
+/** 读取评估/验证预测目录，给出下一轮超参建议。不重新跑模型。 */
+import { Alert, Button, Card, Checkbox, Empty, Form, Input, Space, Typography } from "antd";
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useJob } from "../jobs/JobContext";
 import { ConfirmDangerButton } from "../ui/ConfirmDangerButton";
 import { LogCard } from "../ui/LogCard";
 import { PageHeader } from "../ui/PageHeader";
+import { PipelineStrip } from "../ui/PipelineStrip";
 
-export const menu = { title: "训练分析", icon: "BarChartOutlined", order: 40 };
+export const menu = { title: "调参", icon: "BarChartOutlined", order: 40 };
 
 export default function AnalyzePage() {
+  const navigate = useNavigate();
   const { job, start, cancel } = useJob("analyze");
   const [form] = Form.useForm();
   const [markdown, setMarkdown] = useState("");
@@ -16,9 +19,9 @@ export default function AnalyzePage() {
   useEffect(() => {
     void fetch("/api/config")
       .then((res) => res.json())
-      .then((body: { data?: { train?: { config?: string; outputDir?: string } } }) => {
+      .then((body: { data?: { train?: { config?: string } } }) => {
         form.setFieldsValue({
-          dir: body.data?.train?.outputDir ?? "./outputs/train",
+          dir: "./outputs/lf-predict",
           trainConfig: body.data?.train?.config ?? "./outputs/llamafactory/train_sft.yaml",
           name: "",
           note: "",
@@ -41,14 +44,23 @@ export default function AnalyzePage() {
   return (
     <>
       <PageHeader
-        title="训练分析"
-        description="读取 LlamaFactory 验证/预测目录（predict_results.json、generated_predictions.jsonl 等），给出超参建议，并可保存多轮对比。"
+        title="调参"
+        description="不加载模型。读取评估留下的预测，给出下一轮超参建议。请先完成评估。"
       />
+      <PipelineStrip />
       {job.error && !job.busy ? <Alert type="error" showIcon message={job.error} /> : null}
-      <Card title="分析参数">
+      <Card title="预测">
+        <Typography.Paragraph type="secondary">
+          默认是评估刚写出的 outputs/lf-predict。不要填 outputs/train（那是训练结果，里面没有预测文件）。
+        </Typography.Paragraph>
         <Form form={form} layout="vertical">
-          <Form.Item name="dir" label="LlamaFactory 输出目录" rules={[{ required: true }]}>
-            <Input placeholder="含 predict_results.json 的目录" />
+          <Form.Item
+            name="dir"
+            label="预测输出目录"
+            rules={[{ required: true }]}
+            extra="评估完成后才会有。也可填 LlamaFactory 自己的预测目录。"
+          >
+            <Input placeholder="./outputs/lf-predict" />
           </Form.Item>
           <Form.Item name="trainConfig" label="本轮训练 yaml">
             <Input />
@@ -68,20 +80,23 @@ export default function AnalyzePage() {
             </Form.Item>
           </Space>
         </Form>
-        <Space style={{ marginTop: 16 }}>
-          <Button type="primary" disabled={job.busy} onClick={() => void run()}>
-            开始分析
+        <Space style={{ marginTop: 16 }} wrap>
+          <Button type="primary" htmlType="button" disabled={job.busy} onClick={() => void run()}>
+            开始调参
+          </Button>
+          <Button htmlType="button" onClick={() => navigate("/eval")}>
+            返回评估
           </Button>
           <ConfirmDangerButton disabled={!job.busy} onConfirm={cancel} />
         </Space>
       </Card>
-      <Card title="分析报告">
+      <Card title="调参报告">
         {markdown ? (
           <pre className="report-pre">{markdown}</pre>
         ) : (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description="还没有分析报告。请先完成一轮训练并产生 LlamaFactory 验证目录，再填写路径后点「开始分析」。"
+            description="还没有报告。请先评估，再对本页默认文件夹点「开始调参」。"
           />
         )}
       </Card>

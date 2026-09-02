@@ -1,50 +1,54 @@
-# 固定表述纠错：数据 → 训练 → 评估
+# 固定表述纠错：数据 → 训练 → 评估 → 调参 → 导出
 
-本仓库分成两块，可以不在同一台机器、同一个文件夹里：
+本仓库在根目录启动 Web 或 CLI（`pnpm webui` / `pnpm mtrain`）。数据写到仓库根 `outputs/`。
 
-| 块 | 目录 | 做什么 |
-| --- | --- | --- |
-| 数据与评估 | `wx/` + 工作区 `termcorr-work/` | 洗字典、生成句对、划分评估集、打分 |
-| 训练 | 任意 LlamaFactory 环境 | 只吃一份 `train.jsonl`，产出 LoRA |
+## 两步不要混
 
-训练目录不必是 `E:\llama\train`。只要能读到划分后的训练集、训完能提供 OpenAI 兼容接口，就可以接回这边评估。
+| 页面 | 问的问题 | 做什么 | 读什么 / 写什么 |
+| --- | --- | --- | --- |
+| **评估** | 训练后的模型改得对不对？ | 加载 LoRA，在验证集上生成，算纠错指标 | 读 `outputs/train` + `outputs/eval`；写 `outputs/infer/pred*.jsonl`、`reports/metrics.json`、`outputs/lf-predict` |
+| **调参** | 下一轮超参怎么改？ | **不跑模型**。读预测目录里的 json/jsonl，出建议、做多轮对比 | 默认读 `outputs/lf-predict`（评估刚写的）；写 `reports/analysis.md`、`reports/best/` |
 
----
+评估看 **seen / unseen / keep** 业务分。调参看 loss、BLEU/ROUGE、建议 yaml。不要把训练 checkpoint 目录（`outputs/train`）当成调参输入，那里通常没有 `generated_predictions.jsonl`。
 
 ## 链路
 
 ```
-Excel 监测表
-    │  prepare
+Excel / CSV 种子
+    │  数据页上传（prepare）
     ▼
-词对字典          termcorr-work/data/term_pairs.jsonl
-    │  generate（用正确词检索权威站点，再改成错句）
+词对字典          data/term_pairs.jsonl
+    │  生成训练集（generate）
     ▼
-全部句对          termcorr-work/outputs/sft/train.jsonl
-    │  suite = split + 规则基线 + 评估
-    ├──────────────────┬──────────────────┐
-    ▼                  ▼                  ▼
-训练集              评估集              规则基线分数
-splits/train.jsonl  eval/*.jsonl      reports/metrics.json
-    │                  │
-    │  （拷到训练机器）   │  训完后 infer --backend http --all
-    ▼                  ▼
-LoRA / 模型服务      infer/pred*.jsonl
-                       │  evaluate --all
-                       ▼
-                    reports/metrics.json（模型分数，和基线对比）
+训练集            outputs/sft/train.jsonl
+    │  独立检索验证集（generate-eval，句子不与训练重复）
+    ▼
+验证集            outputs/eval/eval*.jsonl
+    │  训练页（llamafactory-cli train）
+    ▼
+LoRA              outputs/train
+    │  评估页（用训练模型 predict + 打分）
+    ▼
+纠错分数          reports/metrics.json
+预测目录          outputs/lf-predict
+    │  调参页（读预测目录，不跑模型）
+    ▼
+超参建议          reports/analysis.md、reports/best/
+    │  量化页（可选）
+    ▼
+GGUF 等
 ```
 
-LlamaFactory 配置里的 `val_size` 只是训练过程损失，**正式指标一律用 `termcorr evaluate`**。
+规则替换基线只是评估页上的对照按钮，用来估计「如果已经知道错词该改成什么」的上界，**不是**模型评估。
 
 ---
 
 ## 各步产物
 
-工作区默认是 `E:\llama\termcorr-work`，命令都在该目录执行：
+工作区即仓库根，命令：
 
 ```bash
-node E:/llama/wx/bin/termcorr.js <命令>
+pnpm mtrain <命令>
 ```
 
 | 步骤 | 命令 | 产物 | 作用 |
@@ -52,8 +56,9 @@ node E:/llama/wx/bin/termcorr.js <命令>
 | 洗字典 | `prepare --input 那个.xlsx --force` | `data/term_pairs.jsonl` | 错误词/正确词，一对多会写成多条 |
 | 生成句对 | `generate` | `outputs/sft/train.jsonl` | `input`=错句，`output`=正句 |
 | 划分+基线 | `suite` | 见下表 | 训练集、三类评估集、规则基线上界 |
-| 训练 | 在训练环境跑 LlamaFactory | adapter / 合并后的模型 | 不在本数据目录里也行 |
-| 模型评估 | `infer --backend http --all` 再 `evaluate --all` | `infer/pred*.jsonl`、`reports/metrics.json` | 和基线对比 |
+| 训练 | `train` 或训练页 | adapter / 合并后的模型 | 默认 `outputs/train` |
+| 模型评估 | `infer --backend llamafactory --all` 再 `evaluate --all` | `infer/pred*.jsonl`、`reports/metrics.json`、`outputs/lf-predict` | 纠错分数；远程模型可用 `--backend http` |
+| 调参 | `analyze --dir ./outputs/lf-predict --save` | `reports/analysis.md`、`reports/best/` | 不跑模型 |
 
 `suite` 写出的评估相关文件：
 
@@ -65,7 +70,7 @@ node E:/llama/wx/bin/termcorr.js <命令>
 | `outputs/eval/eval_keep.jsonl` | 已经是规范句，不该改 |
 | `outputs/eval/eval.jsonl` | seen + unseen 纠错评估全集 |
 | `outputs/reports/split.json` | 各集规模、句子是否泄漏 |
-| `outputs/reports/metrics.json` | 先是规则基线；模型评估后再覆盖或另存 |
+| `outputs/reports/metrics.json` | 评估页打出的纠错分数（模型主路径；规则对照会覆盖同一文件） |
 
 看分数时：
 
@@ -73,6 +78,20 @@ node E:/llama/wx/bin/termcorr.js <命令>
 - **unseen**：没见过的词对会不会泛化
 - **keep**：规范句会不会被改坏
 - **规则基线**：知道错词/正词时的上界，纠错集应接近 1；模型只能看句子，分数低于基线是正常的
+
+### 评估之后：调参（不跑模型）
+
+先在评估页跑完训练模型。预测目录默认是 `outputs/lf-predict`。
+
+```bash
+pnpm mtrain analyze --dir ./outputs/lf-predict --save --name stage1 --train-config ./outputs/llamafactory/train_sft.yaml
+```
+
+换超参再训、再评估，换 `--name` 再 `--save`。不要把 `--dir` 指到 `outputs/train`（checkpoint 里通常没有 generated_predictions.jsonl）。
+
+`reports/compare.md` 会列出各轮 lr/epoch/rank 和 BLEU/ROUGE；综合分最高的训练配置复制到 `reports/best/train_sft.yaml`，下一轮建议在 `reports/best/suggested_next.yaml`。预测目录旁也会写一份 `analysis.md`。
+
+CLI 不传 `--dir` 时默认读 `outputs/lf-predict`，与评估页一致。`train.outputDir` 只表示训练 checkpoint，给评估页加载模型用。
 
 ---
 
@@ -83,9 +102,8 @@ node E:/llama/wx/bin/termcorr.js <命令>
 ### 1. 这边先把数据准备好
 
 ```bash
-cd E:/llama/termcorr-work
-node E:/llama/wx/bin/termcorr.js generate    # 等 [done]
-node E:/llama/wx/bin/termcorr.js suite
+pnpm mtrain generate    # 等 [done]
+pnpm mtrain suite
 ```
 
 确认存在：`outputs/splits/train.jsonl`。
@@ -94,9 +112,9 @@ node E:/llama/wx/bin/termcorr.js suite
 
 任选一种：
 
-- 拷贝：`scp` / U 盘 / 共享盘，把 `train.jsonl` 放到训练机任意路径，例如 `/data/termcorr/train.jsonl`
-- 共享：NFS、SMB，训练机直接读 `E:\llama\termcorr-work\outputs\splits\train.jsonl`（WSL 下是 `/mnt/e/llama/termcorr-work/outputs/splits/train.jsonl`）
-- 不必拷贝 `wx/`、不必拷贝评估集、不必拷贝 Excel
+- 拷贝：`scp` / U 盘 / 共享盘，把 `train.jsonl` 放到训练机任意路径，例如 `/data/model-training/train.jsonl`
+- 共享：NFS、SMB，训练机直接读仓库根 `outputs/splits/train.jsonl`
+- 不必拷贝评估集、不必拷贝 Excel
 
 ### 3. 在训练环境的 LlamaFactory 里注册这份数据
 
@@ -105,7 +123,7 @@ node E:/llama/wx/bin/termcorr.js suite
 ```json
 {
   "term_sft": {
-    "file_name": "/data/termcorr/train.jsonl",
+    "file_name": "/data/model-training/train.jsonl",
     "formatting": "alpaca",
     "columns": {
       "prompt": "instruction",
@@ -116,7 +134,7 @@ node E:/llama/wx/bin/termcorr.js suite
 }
 ```
 
-Windows 用 `E:/llama/termcorr-work/outputs/splits/train.jsonl`，WSL 用 `/mnt/e/...`。  
+Windows 用仓库根下 `outputs/splits/train.jsonl` 的绝对路径。  
 `file_name` 若是相对路径，则相对于该 LlamaFactory 配置里的 `dataset_dir`。
 
 训练 yaml 里对应：
@@ -124,15 +142,17 @@ Windows 用 `E:/llama/termcorr-work/outputs/splits/train.jsonl`，WSL 用 `/mnt/
 ```yaml
 dataset_dir: 你的 dataset_info.json 所在目录
 dataset: term_sft
-template: qwen   # 按基座改
+template: qwen3   # 按基座改
 output_dir: 训练机上的保存目录
 ```
 
 本仓库的 `train/llamafactory/` 只是一份示例。训练在别的仓库时，**复制字段即可，不要依赖这个相对路径。**
 
-### 4. 训完后把模型接到评估
+### 4. 训完后把模型接到评估（本机主路径 / 远程可选）
 
-评估仍在数据机（`termcorr-work`）跑，因为评估集在这边。训练机需要提供 OpenAI 兼容的 `/v1/chat/completions`：
+本机：打开评估页，指向 `outputs/train`，主按钮走 LlamaFactory predict + 打分。不要跳过评估直接做调参。
+
+训练在另一台机器时（可选旁路）：起 OpenAI 兼容接口，再用 HTTP 推理。评估集留在数据机上打分。
 
 ```bash
 # 在训练环境
@@ -140,7 +160,7 @@ llamafactory-cli api 你的.yaml
 # 或 vLLM / 其他服务，监听例如 http://训练机IP:8000
 ```
 
-数据机改 `termcorr-work/termcorr.config.js`：
+数据机改 `model-training.config.json`：
 
 ```js
 infer: {
@@ -156,9 +176,8 @@ infer: {
 然后：
 
 ```bash
-cd E:/llama/termcorr-work
-node E:/llama/wx/bin/termcorr.js infer --backend http --all
-node E:/llama/wx/bin/termcorr.js evaluate --all
+pnpm mtrain infer --backend http --all
+pnpm mtrain evaluate --all
 ```
 
 本机训练、本机 API 则 `url` 用 `http://127.0.0.1:8000/v1/chat/completions` 即可。
@@ -175,7 +194,7 @@ node E:/llama/wx/bin/termcorr.js evaluate --all
 
 若训练就在本机、且用 `E:\llama\train\llamafactory`：
 
-- `dataset_info.json` 里的相对路径指向 `termcorr-work/outputs/splits/train.jsonl`
+- `dataset_info.json` 里的相对路径指向 `outputs/sft/train.jsonl` 或 `outputs/splits/train.jsonl`
 - 先跑完 `suite`，这个文件才会存在
 - `train_sft.yaml` 里的 `model_name_or_path` / `output_dir` 仍要改成你自己的模型路径
 

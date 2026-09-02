@@ -5,6 +5,8 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { readJsonl } from "./jsonl.js";
+import type { SftExample } from "./types.js";
 import { isRecord } from "./util.js";
 
 export interface LfLogPoint {
@@ -137,7 +139,21 @@ function loadPredictions(file: string, snap: LfSnapshot): void {
     if (input && normText(predict) === normText(input)) copy += 1;
     if (isRepeat(predict)) repeat += 1;
   }
-  const n = rows.length;
+  writePredRates(snap, rows.length, exact, copy, empty, repeat, predChars, labelChars, fails);
+}
+
+function writePredRates(
+  snap: LfSnapshot,
+  n: number,
+  exact: number,
+  copy: number,
+  empty: number,
+  repeat: number,
+  predChars: number,
+  labelChars: number,
+  fails: LfPredSample[],
+): void {
+  if (!n) return;
   snap.n_pred = n;
   snap.exact_match = +(exact / n).toFixed(4);
   snap.copy_input_rate = +(copy / n).toFixed(4);
@@ -147,6 +163,47 @@ function loadPredictions(file: string, snap: LfSnapshot): void {
   snap.mean_label_chars = +(labelChars / n).toFixed(1);
   snap.length_ratio = labelChars > 0 ? +(predChars / labelChars).toFixed(3) : null;
   snap.samples = fails;
+}
+
+/**
+ * LlamaFactory 的 generated_predictions.jsonl 经常不留在 lf-predict 里。
+ * 评估已经转成 infer/pred.jsonl，缺预测文件时用这份和 gold 对齐再算这三项。
+ */
+export function applyGoldPredMetrics(snap: LfSnapshot, goldFile: string, predFile: string): boolean {
+  if (snap.n_pred) return false;
+  if (!fs.existsSync(goldFile) || !fs.existsSync(predFile)) return false;
+  const golds = readJsonl<SftExample>(goldFile, "empty");
+  const preds = readJsonl<{ id?: string | number; pred?: string }>(predFile, "empty");
+  if (!golds.length || !preds.length) return false;
+  const byId = new Map(preds.map((row, i) => [String(row.id ?? i), row]));
+  let exact = 0;
+  let copy = 0;
+  let empty = 0;
+  let repeat = 0;
+  let predChars = 0;
+  let labelChars = 0;
+  const fails: LfPredSample[] = [];
+  for (const [i, gold] of golds.entries()) {
+    const predict = String(byId.get(String(gold.id ?? i))?.pred ?? preds[i]?.pred ?? "");
+    const label = String(gold.output ?? "");
+    const input = String(gold.input ?? "");
+    predChars += normText(predict).length;
+    labelChars += normText(label).length;
+    if (!predict.trim()) empty += 1;
+    if (normText(predict) === normText(label)) exact += 1;
+    else if (fails.length < 8) {
+      fails.push({
+        input: input.slice(0, 120),
+        predict: predict.slice(0, 120),
+        label: label.slice(0, 120),
+      });
+    }
+    if (input && normText(predict) === normText(input)) copy += 1;
+    if (isRepeat(predict)) repeat += 1;
+  }
+  writePredRates(snap, golds.length, exact, copy, empty, repeat, predChars, labelChars, fails);
+  snap.files.push(path.basename(predFile));
+  return true;
 }
 
 function pullPredictScores(snap: LfSnapshot): void {

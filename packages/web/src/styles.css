@@ -290,6 +290,11 @@ body,
   opacity: 0.7;
 }
 
+.env-fab.ant-float-btn {
+  inset-inline-end: 28px;
+  inset-block-end: 28px;
+}
+
 @media (max-width: 768px) {
   .app-brand-text span {
     display: none;

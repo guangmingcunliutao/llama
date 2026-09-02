@@ -12,6 +12,7 @@ import { JobProvider, useJob } from "../jobs/JobContext";
 import { JOB_LABEL } from "../ui/LogCard";
 import { sidebarItems } from "../menu/fromPages";
 import { BrandMark } from "../ui/BrandMark";
+import { EnvironmentFab } from "../ui/EnvironmentFab";
 import { AppearanceButton, ThemeProvider } from "../theme/ThemeProvider";
 
 const { Header, Sider, Content } = Layout;
@@ -92,6 +93,7 @@ function Shell({ children }: { children: ReactNode }) {
         <Content className="app-content">
           <div className="app-content-inner">{children}</div>
         </Content>
+        <EnvironmentFab />
       </Layout>
     </Layout>
   );
