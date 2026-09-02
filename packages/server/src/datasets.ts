@@ -3,30 +3,36 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { countJsonl, loadUserConfig, loadWorkspace, prepareDict, dataRunPaths } from "@model-training/core";
+import { countJsonl, dataRunPaths, loadUserConfig, loadWorkspace, materializeEvalSlices, prepareDict } from "@model-training/core";
 
 export async function datasetStatus(cwd: string) {
   const cfg = await loadUserConfig({ command: "status", cwd });
   const dictPath = cfg.dict;
   const ws = loadWorkspace(cfg.outDir);
-  const trainPath = ws.dataRunId ? dataRunPaths(cfg.outDir, ws.dataRunId).train : null;
-  const evalPath = ws.dataRunId ? dataRunPaths(cfg.outDir, ws.dataRunId).eval : null;
+  const evalPaths = ws.dataRunId ? dataRunPaths(cfg.outDir, ws.dataRunId) : null;
+  if (evalPaths) {
+    const hasSource = fs.existsSync(evalPaths.evalRaw) || fs.existsSync(evalPaths.eval);
+    const missingSlices =
+      !fs.existsSync(evalPaths.evalSeen) && !fs.existsSync(evalPaths.evalUnseen) && !fs.existsSync(evalPaths.evalKeep);
+    if (hasSource && missingSlices) {
+      if (!fs.existsSync(evalPaths.evalRaw) && fs.existsSync(evalPaths.eval)) {
+        fs.copyFileSync(evalPaths.eval, evalPaths.evalRaw);
+      }
+      materializeEvalSlices(evalPaths);
+    }
+  }
+  const fileStat = (file: string | null) => ({
+    path: file,
+    exists: Boolean(file && fs.existsSync(file)),
+    rows: file ? countJsonl(file) : 0,
+  });
   return {
-    dict: {
-      path: dictPath,
-      exists: Boolean(dictPath && fs.existsSync(dictPath)),
-      rows: dictPath ? countJsonl(dictPath) : 0,
-    },
-    train: {
-      path: trainPath,
-      exists: Boolean(trainPath && fs.existsSync(trainPath)),
-      rows: trainPath ? countJsonl(trainPath) : 0,
-    },
-    eval: {
-      path: evalPath,
-      exists: Boolean(evalPath && fs.existsSync(evalPath)),
-      rows: evalPath ? countJsonl(evalPath) : 0,
-    },
+    dict: fileStat(dictPath),
+    train: fileStat(evalPaths?.train ?? null),
+    eval: fileStat(evalPaths?.eval ?? null),
+    evalSeen: fileStat(evalPaths?.evalSeen ?? null),
+    evalUnseen: fileStat(evalPaths?.evalUnseen ?? null),
+    evalKeep: fileStat(evalPaths?.evalKeep ?? null),
     workspace: ws,
   };
 }

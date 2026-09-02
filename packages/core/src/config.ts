@@ -331,6 +331,7 @@ export async function loadUserConfig(opts: LoadUserConfigOptions): Promise<Resol
     resolveFrom(root, cfg.llamafactory?.bin) ||
     resolveFrom(root, process.env.LLAMAFACTORY_BIN || null);
   const lfHub = parseModelHub(cfg.llamafactory?.hub) ?? "modelscope";
+  const lfModel = (cfg.llamafactory?.model ?? "").trim() || null;
   const lfHfEndpoint = (cfg.llamafactory?.hfEndpoint ?? "").trim() || null;
   const lfModelCacheDir =
     resolveFrom(root, cfg.llamafactory?.modelCacheDir) || path.join(root, ".cache", "models");
@@ -378,6 +379,7 @@ export async function loadUserConfig(opts: LoadUserConfigOptions): Promise<Resol
     lfHome,
     lfBin,
     lfHub,
+    lfModel,
     lfHfEndpoint,
     lfModelCacheDir,
     paths: {

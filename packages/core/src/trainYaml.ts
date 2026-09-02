@@ -12,6 +12,7 @@ export const TRAIN_KEYS = [
   "lora_target",
   "learning_rate",
   "num_train_epochs",
+  "max_steps",
   "lr_scheduler_type",
   "warmup_ratio",
   "per_device_train_batch_size",

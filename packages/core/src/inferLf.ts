@@ -198,9 +198,9 @@ export async function inferLlamaFactorySlice(
   const full = looksLikeHfModelDir(adapterDir);
   const model =
     (flags.model && !lora ? flags.model : "") ||
-    (lora ? String(knobs.model_name_or_path ?? "") : "") ||
+    (lora ? String(knobs.model_name_or_path ?? cfg.lfModel ?? "") : "") ||
     (full ? adapterDir.replaceAll("\\", "/") : "") ||
-    String(knobs.model_name_or_path ?? "");
+    String(knobs.model_name_or_path ?? cfg.lfModel ?? "");
   if (!model) {
     throw new Error("没有可加载的模型。请先完成训练（实验目录 ckpt 里应有 adapter），或在训练页填写基座模型。");
   }

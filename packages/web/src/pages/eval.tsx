@@ -15,7 +15,7 @@ export const menu = { title: "评估", icon: "ExperimentOutlined", order: 30 };
 export default function EvalPage() {
   const navigate = useNavigate();
   const { message } = AntdApp.useApp();
-  const { job, start, cancel, isBusy } = useJob(["infer", "evaluate"]);
+  const { job, start, cancel } = useJob(["infer", "evaluate"]);
   const trainRuns = useRuns("train");
   const [form] = Form.useForm();
   const [metrics, setMetrics] = useState<Record<string, unknown> | null>(null);
@@ -56,7 +56,7 @@ export default function EvalPage() {
       <PipelineStrip />
       {job.error && !job.busy ? <Alert type="error" showIcon message={job.error} /> : null}
       <Card title="训练模型">
-        <Form form={form} layout="vertical">
+        <Form form={form} layout="vertical" disabled={job.busy}>
           <Form.Item name="trainRunId" label="训练实验" extra="目录里有 adapter 的实验才能评估。">
             <Select
               placeholder="选择训练实验"
@@ -72,7 +72,7 @@ export default function EvalPage() {
           加载该目录中的模型，对验证集做生成，写出预测和 metrics.json。
         </Typography.Paragraph>
         <Space wrap>
-          <Button type="primary" htmlType="button" disabled={isBusy("infer")} onClick={() => void runModelEval()}>
+          <Button type="primary" htmlType="button" disabled={job.busy} onClick={() => void runModelEval()}>
             开始评估
           </Button>
           <Button htmlType="button" onClick={() => navigate("/analyze")}>
@@ -94,14 +94,14 @@ export default function EvalPage() {
                   <Space wrap>
                     <Button
                       htmlType="button"
-                      disabled={isBusy("evaluate")}
+                      disabled={job.busy}
                       onClick={() => void start("/api/jobs/evaluate")}
                     >
                       已有预测时仅打分
                     </Button>
                     <Button
                       htmlType="button"
-                      disabled={isBusy("infer")}
+                      disabled={job.busy}
                       onClick={() => void start("/api/jobs/infer", { backend: "rule", baseline: true, all: true })}
                     >
                       规则上界（对照）

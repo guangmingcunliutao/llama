@@ -3,6 +3,7 @@ export { defineConfig, findRepoRoot, loadUserConfig, normalizeSources } from "./
 export { defaultUserConfig } from "./defaultConfig.js";
 export { generateEval } from "./generateEval.js";
 export { generate, collectSentences } from "./generate.js";
+export { materializeEvalSlices } from "./evalSlices.js";
 export { pidAlive, killProcessTree } from "./killTree.js";
 export {
   createRun,

@@ -49,6 +49,7 @@ export function dataParamsFrom(cfg: ResolvedConfig, flags: GenerateFlags): DataP
     formats: flags.format ? flags.format.split(/[,+\s]+/).filter(Boolean) : [...cfg.formats],
     minLen: cfg.sentence.minLen,
     maxLen: cfg.sentence.maxLen,
+    unseenPairRatio: Math.min(0.5, Math.max(0, Number(cfg.split.unseenPairRatio ?? 0.1))),
   };
 }
 
@@ -157,7 +158,7 @@ export function resolveEvalSession(cfg: ResolvedConfig, flags: GenerateFlags): D
   const params = stored ?? incoming;
   const mode = parseRunMode(flags.mode) ?? "resume";
   if (mode === "fresh") {
-    for (const file of [paths.eval, paths.evalSeen, paths.evalUnseen, paths.evalKeep]) {
+    for (const file of [paths.evalRaw, paths.eval, paths.evalSeen, paths.evalUnseen, paths.evalKeep]) {
       if (fs.existsSync(file)) fs.rmSync(file);
     }
     const progress = readDataProgress(cfg.outDir, id);

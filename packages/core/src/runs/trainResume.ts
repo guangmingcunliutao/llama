@@ -22,6 +22,7 @@ const RESUME_LOCK_KEYS = [
   "gradient_accumulation_steps",
   "learning_rate",
   "num_train_epochs",
+  "max_steps",
   "lr_scheduler_type",
   "warmup_ratio",
 ] as const;

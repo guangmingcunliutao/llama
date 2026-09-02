@@ -74,7 +74,6 @@ preprocessing_num_workers: 4
 output_dir: ./outputs/train
 logging_steps: 10
 save_steps: 50
-save_total_limit: 3
 plot_loss: true
 overwrite_output_dir: true
 
@@ -83,6 +82,7 @@ per_device_train_batch_size: 1
 gradient_accumulation_steps: 8
 learning_rate: 1.0e-4
 num_train_epochs: 2.0
+max_steps: -1
 lr_scheduler_type: cosine
 warmup_ratio: 0.1
 bf16: true
@@ -226,6 +226,9 @@ export async function startTrainFromConfig(
   }
 
   const patch: Record<string, string | number | boolean> = { ...params.knobs, ...(opts.patch ?? {}) };
+  if (typeof patch.model_name_or_path !== "string" || !patch.model_name_or_path.trim()) {
+    if (cfg.lfModel) patch.model_name_or_path = cfg.lfModel;
+  }
   const modelRaw = typeof patch.model_name_or_path === "string" ? patch.model_name_or_path : "";
   const requestedHub = parseModelHub(opts.hub) ?? cfg.lfHub;
   if (modelRaw) {
@@ -235,7 +238,7 @@ export async function startTrainFromConfig(
   patch.dataset_dir = paths.lf.replaceAll("\\", "/");
   patch.output_dir = paths.ckpt.replaceAll("\\", "/");
   patch.save_steps = patch.save_steps ?? 50;
-  patch.save_total_limit = patch.save_total_limit ?? 3;
+  delete patch.save_total_limit;
   if (session.meta.mode === "resume" && resumeFrom) {
     patch.overwrite_output_dir = false;
     patch.resume_from_checkpoint = resumeFrom.replaceAll("\\", "/");

@@ -192,6 +192,8 @@ export interface TrainHyperParams {
   lora_target?: string;
   learning_rate?: number | string;
   num_train_epochs?: number;
+  /** -1 表示不限步数，按 epoch 走完数据 */
+  max_steps?: number;
   lr_scheduler_type?: string;
   warmup_ratio?: number;
   per_device_train_batch_size?: number;
@@ -260,6 +262,8 @@ export interface UserConfig {
     prefix?: string;
     /** 基座模型来源：local / huggingface / modelscope / openmind */
     hub?: string;
+    /** 记住的底模：本地目录或仓库 ID */
+    model?: string;
     /** Hugging Face 镜像，如 https://hf-mirror.com */
     hfEndpoint?: string;
     /** 线上模型下载缓存（建议与仓库同盘） */
@@ -366,6 +370,7 @@ export interface ResolvedConfig {
   lfHome: string | null;
   lfBin: string | null;
   lfHub: ModelHub;
+  lfModel: string | null;
   lfHfEndpoint: string | null;
   lfModelCacheDir: string | null;
   paths: OutputPaths;

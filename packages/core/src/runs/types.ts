@@ -55,6 +55,7 @@ export interface DataParams {
   formats: string[];
   minLen: number;
   maxLen: number;
+  unseenPairRatio: number;
 }
 
 export interface TrainParams {
@@ -73,6 +74,7 @@ export interface DataRunPaths {
   train: string;
   trainSharegpt: string;
   evalDir: string;
+  evalRaw: string;
   eval: string;
   evalSeen: string;
   evalUnseen: string;

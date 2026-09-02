@@ -27,6 +27,7 @@ export default function SettingsPage() {
           lfHome: (cfg.llamafactory as { home?: string } | undefined)?.home ?? "",
           lfBin: (cfg.llamafactory as { bin?: string } | undefined)?.bin ?? "",
           lfHub: (cfg.llamafactory as { hub?: string } | undefined)?.hub ?? "modelscope",
+          lfModel: (cfg.llamafactory as { model?: string } | undefined)?.model ?? "",
           hfEndpoint: (cfg.llamafactory as { hfEndpoint?: string } | undefined)?.hfEndpoint ?? "",
         });
       });
@@ -50,6 +51,7 @@ export default function SettingsPage() {
         home: values.lfHome,
         bin: values.lfBin,
         hub: values.lfHub,
+        model: values.lfModel,
         hfEndpoint: values.hfEndpoint,
       },
     };
@@ -113,6 +115,13 @@ export default function SettingsPage() {
                 { value: "local", label: "本地目录" },
               ]}
             />
+          </Form.Item>
+          <Form.Item
+            name="lfModel"
+            label="默认底模"
+            extra="本地目录或仓库 ID。训练页填过一次后会记在这里，下次自动带出。"
+          >
+            <Input placeholder="例如 E:\models\Qwen2.5-0.5B-Instruct 或 Qwen/Qwen3-0.6B" />
           </Form.Item>
           <Form.Item name="hfEndpoint" label="Hugging Face 镜像" extra="仅 hub 为 Hugging Face 时使用，例如 https://hf-mirror.com">
             <Input />

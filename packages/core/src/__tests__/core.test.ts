@@ -160,6 +160,11 @@ describe("train yaml", () => {
     expect(next).toContain("model_name_or_path: ");
     expect(parseTrainYaml(next).model_name_or_path).toBe(file);
   });
+
+  it("parses max_steps", () => {
+    expect(parseTrainYaml("max_steps: -1\n").max_steps).toBe(-1);
+    expect(parseTrainYaml("max_steps: 200\n").max_steps).toBe(200);
+  });
 });
 
 describe("cleanSampleCount", () => {
@@ -349,6 +354,7 @@ describe("generate-eval", () => {
       formats: ["messages"],
       minLen: 16,
       maxLen: 220,
+      unseenPairRatio: 0.1,
     });
     patchWorkspace(cfg0.outDir, { dataRunId: data.id });
     const cfg = await loadUserConfig({ command: "generate-eval", cwd: dir });
@@ -358,6 +364,9 @@ describe("generate-eval", () => {
     expect(rows[0]?.output).toBe(evalSent);
     expect(rows[0]?.input).not.toBe(evalSent);
     expect(leaksIntoTrain(rows.map((r) => r.output), [trainSent])).toEqual([]);
+    expect(readJsonl(dataPaths.evalSeen)).toHaveLength(1);
+    expect(readJsonl(dataPaths.evalUnseen)).toHaveLength(0);
+    expect(readJsonl(dataPaths.evalKeep)).toHaveLength(0);
   });
 });
 

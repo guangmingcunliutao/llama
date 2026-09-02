@@ -127,6 +127,8 @@ export async function generate(cfg: ResolvedConfig, flags: GenerateFlags = {}): 
   const grouped = groupByCorrect(pairs);
   let terms = [...grouped.keys()];
   if (params.limitTerms != null) terms = terms.slice(0, params.limitTerms);
+  const hold = Math.floor(terms.length * (params.unseenPairRatio ?? 0));
+  const trainTerms = hold > 0 ? terms.slice(0, terms.length - hold) : terms;
 
   const limiter = new RequestRateLimiter(cfg.rate.requestsPerMinute, cfg.rate.jitterSec);
   const sources = selected.map((item) =>
@@ -145,7 +147,7 @@ export async function generate(cfg: ResolvedConfig, flags: GenerateFlags = {}): 
 
   log(`[generate] run=${session.meta.id} mode=${session.meta.mode}`);
   log(
-    `[generate] dict=${pairs.length} unique_correct=${grouped.size} terms=${terms.length} pairs_per_term=${params.pairsPerTerm} clean_ratio=${params.cleanRatio} max_pages=${params.maxPages}`,
+    `[generate] dict=${pairs.length} unique_correct=${grouped.size} train_terms=${trainTerms.length} holdout_unseen=${hold} pairs_per_term=${params.pairsPerTerm} clean_ratio=${params.cleanRatio} max_pages=${params.maxPages}`,
   );
   log(`[generate] sources=${sources.map((s) => s.name).join(",")}`);
   log(`[generate] alpaca=${outFile}`);
@@ -153,7 +155,7 @@ export async function generate(cfg: ResolvedConfig, flags: GenerateFlags = {}): 
   if (progress.phase === "train_done" || progress.phase === "completed" || progress.phase === "generating_eval") {
     throw new Error("训练集已完成。要补数据请用「在上次基础上追加」；验证集请点「生成验证集」。");
   }
-  progress.termTotal = terms.length;
+  progress.termTotal = trainTerms.length;
   progress.phase = "generating_train";
   let writtenError = progress.writtenError;
   let writtenKeep = progress.writtenKeep;
@@ -168,9 +170,9 @@ export async function generate(cfg: ResolvedConfig, flags: GenerateFlags = {}): 
   });
 
   try {
-    for (let termIndex = startIndex; termIndex < terms.length; termIndex += 1) {
+    for (let termIndex = startIndex; termIndex < trainTerms.length; termIndex += 1) {
       throwIfAborted(signal);
-      const correct = terms[termIndex]!;
+      const correct = trainTerms[termIndex]!;
       progress.termIndex = termIndex;
       progress.currentCorrect = correct;
       let sentences: SentenceHit[] = [];
@@ -180,7 +182,7 @@ export async function generate(cfg: ResolvedConfig, flags: GenerateFlags = {}): 
           const docs = await src.search(correct);
           sentences = collectSentences(docs, correct, params.minLen, params.maxLen);
           log(
-            `[search] ${termIndex + 1}/${terms.length} source=${src.name} term=${correct} docs=${docs.length} sents=${sentences.length}`,
+            `[search] ${termIndex + 1}/${trainTerms.length} source=${src.name} term=${correct} docs=${docs.length} sents=${sentences.length}`,
           );
           if (sentences.length) break;
         } catch (err) {

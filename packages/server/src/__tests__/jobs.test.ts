@@ -205,6 +205,19 @@ describe("persistLlamaFactory", () => {
     expect(lf.hub).toBe("huggingface");
     expect(lf.hfEndpoint).toBe("https://hf-mirror.com");
   });
+
+  it("caches local model path from knobs", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mt-lf-model-"));
+    const ctx = fakeApp(dir);
+    ctx.writeConfigFile({ llamafactory: { hub: "modelscope" } });
+    persistLlamaFactory(ctx, {
+      hub: "local",
+      knobs: { model_name_or_path: "E:\\models\\Qwen2.5-0.5B-Instruct" },
+    });
+    const lf = ctx.readConfigFile().llamafactory as { hub: string; model: string };
+    expect(lf.hub).toBe("local");
+    expect(lf.model).toBe("E:\\models\\Qwen2.5-0.5B-Instruct");
+  });
 });
 
 describe("detectQuantSource", () => {

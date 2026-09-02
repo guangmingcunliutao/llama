@@ -8,6 +8,7 @@ import path from "node:path";
 import { groupByCorrect, loadDictionary } from "./dictionary.js";
 import { collectSentences } from "./generate.js";
 import { cleanSampleCount } from "./generateMix.js";
+import { materializeEvalSlices } from "./evalSlices.js";
 import { readJsonl } from "./jsonl.js";
 import { RequestRateLimiter } from "./rateLimit.js";
 import { normalizeSentence } from "./sentenceNorm.js";
@@ -44,7 +45,10 @@ export async function generateEval(
   const { paths, params } = session;
   let progress = session.progress;
   const trainFile = paths.train;
-  const outFile = paths.eval;
+  const outFile = paths.evalRaw;
+  if (!fs.existsSync(outFile) && fs.existsSync(paths.eval)) {
+    fs.copyFileSync(paths.eval, outFile);
+  }
 
   const pairs = loadDictionary(dictPath);
   const grouped = groupByCorrect(pairs);
@@ -198,6 +202,11 @@ export async function generateEval(
     progress.skippedLeak = skippedLeak;
     writeDataProgress(cfg.outDir, session.meta.id, progress);
     await new Promise<void>((resolve) => out.end(resolve));
+    try {
+      materializeEvalSlices(paths);
+    } catch {
+      /* 中断时切片可能不完整，仍保留 raw */
+    }
     if (isJobCancelled(err)) {
       patchRun(cfg.outDir, "data", session.meta.id, {
         status: "interrupted",
@@ -220,12 +229,17 @@ export async function generateEval(
   }
 
   await new Promise<void>((resolve) => out.end(resolve));
+  const slices = materializeEvalSlices(paths);
   throwIfAborted(flags.signal);
 
   fs.writeFileSync(
     path.join(paths.evalDir, "README.md"),
-    `# 验证集\n\n条数: ${writtenError + writtenKeep}（错句 ${writtenError}，正确句 ${writtenKeep}）\n` +
-      `与训练集规范句泄漏跳过: ${skippedLeak}。本文件独立检索生成。\n`,
+    `# 验证集\n\n` +
+      `- eval.jsonl（纠错全集 seen+unseen）：${slices.eval}\n` +
+      `- eval_seen_pair.jsonl（词对见过、句子没见过）：${slices.eval_seen_pair}\n` +
+      `- eval_unseen_pair.jsonl（词对未进训练）：${slices.eval_unseen_pair}\n` +
+      `- eval_keep.jsonl（规范句，不应改）：${slices.eval_keep}\n\n` +
+      `与训练集规范句泄漏跳过: ${skippedLeak}。独立检索生成，不是从训练集剥离句子。\n`,
     "utf8",
   );
   patchRun(cfg.outDir, "data", session.meta.id, {
@@ -236,7 +250,9 @@ export async function generateEval(
     error: null,
     skippedLeak,
   });
-  log(`[generate-eval] wrote=${writtenError + writtenKeep} errors=${writtenError} keep=${writtenKeep} leaked_skip=${skippedLeak} file=${outFile}`);
+  log(
+    `[generate-eval] wrote=${writtenError + writtenKeep} errors=${writtenError} keep=${writtenKeep} leaked_skip=${skippedLeak} seen=${slices.eval_seen_pair} unseen=${slices.eval_unseen_pair} keep_file=${slices.eval_keep}`,
+  );
   return {
     written: writtenError + writtenKeep,
     output: outFile,

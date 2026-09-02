@@ -93,7 +93,20 @@ export function persistLlamaFactory(ctx: AppContext, body: Record<string, unknow
   const bin = typeof body.bin === "string" ? body.bin.trim() : undefined;
   const hub = typeof body.hub === "string" ? body.hub.trim() : undefined;
   const hfEndpoint = typeof body.hfEndpoint === "string" ? body.hfEndpoint.trim() : undefined;
-  if (home === undefined && bin === undefined && hub === undefined && hfEndpoint === undefined) return;
+  const knobs = isJsonObject(body.knobs) ? body.knobs : {};
+  const modelFromBody = typeof body.model === "string" ? body.model.trim() : undefined;
+  const modelFromKnobs =
+    typeof knobs.model_name_or_path === "string" ? knobs.model_name_or_path.trim() : undefined;
+  const model = modelFromBody || modelFromKnobs || undefined;
+  if (
+    home === undefined &&
+    bin === undefined &&
+    hub === undefined &&
+    hfEndpoint === undefined &&
+    model === undefined
+  ) {
+    return;
+  }
   const raw = ctx.readConfigFile();
   const prev = isJsonObject(raw.llamafactory) ? raw.llamafactory : {};
   const llamafactory: Record<string, unknown> = { ...prev };
@@ -101,6 +114,7 @@ export function persistLlamaFactory(ctx: AppContext, body: Record<string, unknow
   if (bin !== undefined) llamafactory.bin = bin;
   if (hub !== undefined) llamafactory.hub = hub;
   if (hfEndpoint !== undefined) llamafactory.hfEndpoint = hfEndpoint;
+  if (model !== undefined) llamafactory.model = model;
   ctx.writeConfigFile({ ...raw, llamafactory });
 }
 

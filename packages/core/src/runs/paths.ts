@@ -21,6 +21,7 @@ export function dataRunPaths(outDir: string, id: string): DataRunPaths {
     train: path.join(dir, "train.jsonl"),
     trainSharegpt: path.join(dir, "train_sharegpt.jsonl"),
     evalDir,
+    evalRaw: path.join(evalDir, "raw.jsonl"),
     eval: path.join(evalDir, "eval.jsonl"),
     evalSeen: path.join(evalDir, "eval_seen_pair.jsonl"),
     evalUnseen: path.join(evalDir, "eval_unseen_pair.jsonl"),

@@ -43,6 +43,9 @@ interface DatasetStatus {
   dict: FileStat;
   train: FileStat;
   eval: FileStat;
+  evalSeen?: FileStat;
+  evalUnseen?: FileStat;
+  evalKeep?: FileStat;
 }
 
 interface SourceItem {
@@ -80,12 +83,13 @@ const STATUS_COLOR: Record<string, string> = {
 
 export default function DataPage() {
   const { message } = AntdApp.useApp();
-  const { job, start, cancel, isBusy } = useJob(["generate", "generate-eval"]);
+  const { job, start, cancel } = useJob(["generate", "generate-eval"]);
   const runs = useRuns("data");
   const [stats, setStats] = useState<DatasetStatus | null>(null);
   const [uploading, setUploading] = useState(false);
   const [sourceOpts, setSourceOpts] = useState<SourceItem[]>([]);
   const [form] = Form.useForm<GenForm>();
+  const locked = job.busy;
 
   const loadStats = useCallback(async () => {
     const res = await fetch("/api/datasets");
@@ -155,8 +159,9 @@ export default function DataPage() {
   }, [job.busy, loadStats, runs.refresh]);
 
   useEffect(() => {
+    if (locked) return;
     if (runs.selected?.canResume) form.setFieldValue("mode", "resume");
-  }, [runs.selected?.canResume, form]);
+  }, [runs.selected?.canResume, form, locked]);
 
   const uploadProps: UploadProps = {
     name: "file",
@@ -242,14 +247,32 @@ export default function DataPage() {
         </Col>
         <Col xs={24} md={8}>
           <Card>
-            <Statistic title="当前训练集" value={runs.selected?.trainRows ?? 0} suffix="条" />
+            <Statistic title="当前训练集" value={runs.selected?.trainRows ?? stats?.train.rows ?? 0} suffix="条" />
             <Typography.Text className="stat-path">{runs.selectedId ?? "未选实验"}</Typography.Text>
           </Card>
         </Col>
         <Col xs={24} md={8}>
           <Card>
-            <Statistic title="当前验证集" value={runs.selected?.evalRows ?? 0} suffix="条" />
-            <Typography.Text className="stat-path">{runs.selected?.phase ?? "—"}</Typography.Text>
+            <Statistic title="验证全集 eval" value={stats?.eval.rows ?? 0} suffix="条" />
+            <Typography.Text className="stat-path">seen + unseen，不含 keep</Typography.Text>
+          </Card>
+        </Col>
+        <Col xs={24} md={8}>
+          <Card>
+            <Statistic title="seen 词对见过" value={stats?.evalSeen?.rows ?? 0} suffix="条" />
+            <Typography.Text className="stat-path">eval_seen_pair.jsonl</Typography.Text>
+          </Card>
+        </Col>
+        <Col xs={24} md={8}>
+          <Card>
+            <Statistic title="unseen 词对未见" value={stats?.evalUnseen?.rows ?? 0} suffix="条" />
+            <Typography.Text className="stat-path">eval_unseen_pair.jsonl</Typography.Text>
+          </Card>
+        </Col>
+        <Col xs={24} md={8}>
+          <Card>
+            <Statistic title="keep 规范句" value={stats?.evalKeep?.rows ?? 0} suffix="条" />
+            <Typography.Text className="stat-path">eval_keep.jsonl</Typography.Text>
           </Card>
         </Col>
       </Row>
@@ -262,7 +285,7 @@ export default function DataPage() {
           dataSource={runs.rows}
           rowClassName={(row) => (row.id === runs.selectedId ? "ant-table-row-selected" : "")}
           onRow={(row) => ({
-            onClick: () => void runs.select(row.id),
+            onClick: locked ? undefined : () => void runs.select(row.id),
           })}
           columns={[
             { title: "实验", dataIndex: "label", ellipsis: true },
@@ -280,7 +303,7 @@ export default function DataPage() {
               width: 70,
               render: (_, row) => (
                 <Popconfirm title="删除该实验目录？" onConfirm={() => void runs.remove(row.id)}>
-                  <Button type="link" danger size="small" onClick={(e) => e.stopPropagation()}>
+                  <Button type="link" danger size="small" disabled={locked} onClick={(e) => e.stopPropagation()}>
                     删除
                   </Button>
                 </Popconfirm>
@@ -291,7 +314,7 @@ export default function DataPage() {
       </Card>
 
       <Card title="① 种子数据">
-        <Upload.Dragger {...uploadProps} disabled={uploading || isBusy("generate")}>
+        <Upload.Dragger {...uploadProps} disabled={uploading || locked}>
           <p className="ant-upload-drag-icon">
             <InboxOutlined />
           </p>
@@ -300,7 +323,7 @@ export default function DataPage() {
         </Upload.Dragger>
       </Card>
 
-      <Form form={form} layout="vertical" initialValues={{ mode: "fresh" }}>
+      <Form form={form} layout="vertical" disabled={locked} initialValues={{ mode: "fresh" }}>
         <Card title="② 检索来源">
           <Form.Item
             name="sources"
@@ -387,7 +410,7 @@ export default function DataPage() {
           </Row>
         </Card>
 
-        <Card title="④ 生成">
+        <Card title="④ 生成" extra={locked ? "生成进行中，参数已锁定" : undefined}>
           <Form.Item name="mode" label="方式">
             <Radio.Group
               optionType="button"
@@ -401,19 +424,21 @@ export default function DataPage() {
           <Form.Item name="label" label="实验名称（全新 / 追加时使用）">
             <Input placeholder="例如 全量-人民网" />
           </Form.Item>
-          <Space wrap>
-            <Button type="primary" disabled={isBusy("generate") || !stats?.dict.exists} onClick={() => void runGenerate()}>
-              生成训练集
-            </Button>
-            <Button disabled={isBusy("generate-eval") || !runs.selectedId} onClick={() => void runEvalGenerate()}>
-              生成验证集
-            </Button>
-            <ConfirmDangerButton
-              disabled={!job.busy}
-              onConfirm={cancel}
-              description="会立刻中断。已写入当前实验的 jsonl 会保留，下次可继续。"
-            />
-          </Space>
+          <Form.Item disabled={false}>
+            <Space wrap>
+              <Button type="primary" disabled={locked || !stats?.dict.exists} onClick={() => void runGenerate()}>
+                生成训练集
+              </Button>
+              <Button disabled={locked || !runs.selectedId} onClick={() => void runEvalGenerate()}>
+                生成验证集
+              </Button>
+              <ConfirmDangerButton
+                disabled={!locked}
+                onConfirm={cancel}
+                description="会立刻中断。已写入当前实验的 jsonl 会保留，下次可继续。"
+              />
+            </Space>
+          </Form.Item>
         </Card>
       </Form>
 
