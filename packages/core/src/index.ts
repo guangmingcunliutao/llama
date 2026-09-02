@@ -3,6 +3,27 @@ export { defineConfig, findRepoRoot, loadUserConfig, normalizeSources } from "./
 export { defaultUserConfig } from "./defaultConfig.js";
 export { generateEval } from "./generateEval.js";
 export { generate, collectSentences } from "./generate.js";
+export { pidAlive, killProcessTree } from "./killTree.js";
+export {
+  createRun,
+  dataRunPaths,
+  deleteRun,
+  evalRunPaths,
+  fingerprintFile,
+  fingerprintValue,
+  listRuns,
+  loadWorkspace,
+  patchWorkspace,
+  readDataProgress,
+  readRun,
+  requireDataRun,
+  requireTrainRun,
+  selectRun,
+  summarizeRun,
+  tailLog,
+  trainRunPaths,
+} from "./runs/index.js";
+export type { RunKind, RunMeta, RunMode, RunSummary, WorkspacePointer } from "./runs/index.js";
 export { prepareDict } from "./prepare.js";
 export { countJsonl } from "./jsonl.js";
 export { ExclusiveJob } from "./jobLock.js";

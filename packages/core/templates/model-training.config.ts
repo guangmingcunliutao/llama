@@ -2,6 +2,7 @@ import { defineConfig } from "@model-training/core";
 
 /**
  * 仓库根或工作区配置。CLI 与 Web 共用这一份。
+ * 训练/数据/评估产物按实验写在 outDir 下，不必再填 yaml 或 checkpoint 路径。
  */
 export default defineConfig({
   outDir: "./outputs",
@@ -9,12 +10,7 @@ export default defineConfig({
   instruction: "请将句子中的不规范表述改正为规范表述，只输出改正后的句子。",
   dict: "./data/term_pairs.jsonl",
   formats: ["messages"],
-  train: {
-    config: "./outputs/llamafactory/train_sft.yaml",
-    outputDir: "./outputs/train",
-  },
   llamafactory: {
-    datasetDir: "./outputs/lf",
     prefix: "term",
     home: "",
     hub: "modelscope",

@@ -47,7 +47,7 @@ function resolveOutputDir(cfg: ResolvedConfig, flags: AnalyzeFlags): string | nu
     return path.isAbsolute(flags.dir) ? flags.dir : path.resolve(cfg.cwd, flags.dir);
   }
   /** 默认读评估页 LlamaFactory predict 目录，不要落到 train.outputDir（checkpoint）。 */
-  return path.join(cfg.outDir, "lf-predict");
+  return cfg.paths.lfPredict;
 }
 
 export function snapshotConfig(

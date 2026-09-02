@@ -26,6 +26,8 @@ import {
 } from "../modelSource.js";
 import { ensureTrainYaml, startTrainFromConfig, writeDatasetInfo } from "../trainJob.js";
 import { parseTrainYaml, patchTrainYaml } from "../trainYaml.js";
+import { createRun, patchWorkspace, writeDataParams } from "../runs/store.js";
+import { dataRunPaths } from "../runs/paths.js";
 import { isRecord } from "../util.js";
 import type { SftExample } from "../types.js";
 import { findRepoRoot, loadUserConfig, normalizeSources } from "../config.js";
@@ -237,14 +239,12 @@ describe("train artifacts", () => {
       "utf8",
     );
     const cfg = await loadUserConfig({ command: "train", cwd: dir });
-    await expect(startTrainFromConfig(cfg)).rejects.toThrow(/没有训练集/);
+    await expect(startTrainFromConfig(cfg)).rejects.toThrow(/没有选中的数据实验|没有训练集/);
     expect(fs.existsSync(path.join(dir, "outputs", "llamafactory", "train_sft.yaml"))).toBe(false);
   });
 
   it("refuses to start when LlamaFactory home does not exist", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mt-nohome-"));
-    fs.mkdirSync(path.join(dir, "outputs", "sft"), { recursive: true });
-    fs.writeFileSync(path.join(dir, "outputs", "sft", "train.jsonl"), "{}\n", "utf8");
     fs.writeFileSync(
       path.join(dir, "model-training.config.json"),
       `${JSON.stringify({
@@ -255,6 +255,12 @@ describe("train artifacts", () => {
       })}\n`,
       "utf8",
     );
+    const cfg0 = await loadUserConfig({ command: "train", cwd: dir });
+    const data = createRun(cfg0.outDir, { kind: "data", mode: "fresh", label: "seed" });
+    const dataPaths = dataRunPaths(cfg0.outDir, data.id);
+    fs.mkdirSync(path.dirname(dataPaths.train), { recursive: true });
+    fs.writeFileSync(dataPaths.train, "{}\n", "utf8");
+    patchWorkspace(cfg0.outDir, { dataRunId: data.id });
     const cfg = await loadUserConfig({ command: "train", cwd: dir });
     await expect(startTrainFromConfig(cfg)).rejects.toThrow(/目录不存在/);
   });
@@ -308,18 +314,6 @@ describe("generate-eval", () => {
       `${JSON.stringify({ id: "1", text: trainSent })}\n${JSON.stringify({ id: "2", text: evalSent })}\n`,
       "utf8",
     );
-    fs.mkdirSync(path.join(dir, "outputs", "sft"), { recursive: true });
-    fs.writeFileSync(
-      path.join(dir, "outputs", "sft", "train.jsonl"),
-      `${JSON.stringify({
-        instruction: "x",
-        input: trainSent.replace(term, "习总书记"),
-        output: trainSent,
-        wrong: "习总书记",
-        correct: term,
-      })}\n`,
-      "utf8",
-    );
     fs.writeFileSync(
       path.join(dir, "model-training.config.json"),
       `${JSON.stringify({
@@ -330,10 +324,37 @@ describe("generate-eval", () => {
       })}\n`,
       "utf8",
     );
+    const cfg0 = await loadUserConfig({ command: "generate-eval", cwd: dir });
+    const data = createRun(cfg0.outDir, { kind: "data", mode: "fresh", label: "eval-test" });
+    const dataPaths = dataRunPaths(cfg0.outDir, data.id);
+    fs.mkdirSync(path.dirname(dataPaths.train), { recursive: true });
+    fs.writeFileSync(
+      dataPaths.train,
+      `${JSON.stringify({
+        instruction: "x",
+        input: trainSent.replace(term, "习总书记"),
+        output: trainSent,
+        wrong: "习总书记",
+        correct: term,
+      })}\n`,
+      "utf8",
+    );
+    writeDataParams(cfg0.outDir, data.id, {
+      pairsPerTerm: 3,
+      limitTerms: null,
+      cleanRatio: 0,
+      maxPages: 3,
+      instruction: "x",
+      sources: ["local"],
+      formats: ["messages"],
+      minLen: 16,
+      maxLen: 220,
+    });
+    patchWorkspace(cfg0.outDir, { dataRunId: data.id });
     const cfg = await loadUserConfig({ command: "generate-eval", cwd: dir });
-    const result = await generateEval(cfg);
+    const result = await generateEval(cfg, { mode: "fresh" });
     expect(result.written).toBe(1);
-    const rows = readJsonl<{ output: string; input: string }>(cfg.paths.eval);
+    const rows = readJsonl<{ output: string; input: string }>(dataPaths.eval);
     expect(rows[0]?.output).toBe(evalSent);
     expect(rows[0]?.input).not.toBe(evalSent);
     expect(leaksIntoTrain(rows.map((r) => r.output), [trainSent])).toEqual([]);

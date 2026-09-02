@@ -1,9 +1,10 @@
 /** 用训练后的模型对验证集推理并打分。 */
-import { Alert, Button, Card, Collapse, Empty, Form, Input, Space, Typography } from "antd";
+import { Alert, Button, Card, Collapse, Empty, Form, Select, Space, Typography } from "antd";
 import { App as AntdApp } from "antd";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useJob } from "../jobs/JobContext";
+import { useRuns } from "../runs/useRuns";
 import { ConfirmDangerButton } from "../ui/ConfirmDangerButton";
 import { LogCard } from "../ui/LogCard";
 import { PageHeader } from "../ui/PageHeader";
@@ -15,6 +16,7 @@ export default function EvalPage() {
   const navigate = useNavigate();
   const { message } = AntdApp.useApp();
   const { job, start, cancel, isBusy } = useJob(["infer", "evaluate"]);
+  const trainRuns = useRuns("train");
   const [form] = Form.useForm();
   const [metrics, setMetrics] = useState<Record<string, unknown> | null>(null);
 
@@ -26,21 +28,21 @@ export default function EvalPage() {
       };
       const reportBody = (await reportRes.json()) as { data?: { metrics?: Record<string, unknown> | null } };
       form.setFieldsValue({
-        adapter: cfgBody.data?.train?.outputDir ?? "./outputs/train",
+        trainRunId: cfgBody.data && trainRuns.selectedId ? trainRuns.selectedId : trainRuns.rows.find((r) => r.adapterReady)?.id,
       });
       setMetrics(reportBody.data?.metrics ?? null);
     })();
-  }, [form, job.busy]);
+  }, [form, job.busy, trainRuns.selectedId, trainRuns.rows]);
 
   async function runModelEval(): Promise<void> {
-    const adapter = String(form.getFieldValue("adapter") ?? "").trim();
-    if (!adapter) {
-      message.warning("请填写训练输出目录");
+    const trainRunId = String(form.getFieldValue("trainRunId") ?? trainRuns.selectedId ?? "").trim();
+    if (!trainRunId) {
+      message.warning("请选择一次训练实验");
       return;
     }
     await start("/api/jobs/infer", {
       backend: "llamafactory",
-      adapter,
+      trainRunId,
       all: true,
     });
   }
@@ -49,18 +51,21 @@ export default function EvalPage() {
     <>
       <PageHeader
         title="评估"
-        description="用训练后的模型改验证集句子，计算纠错分数。日常点「开始评估」即可。改下一轮超参请去「调参」。"
+        description="用某次训练实验的 LoRA 改验证集句子，计算纠错分数。"
       />
       <PipelineStrip />
       {job.error && !job.busy ? <Alert type="error" showIcon message={job.error} /> : null}
       <Card title="训练模型">
-        <Form form={form} layout="vertical" initialValues={{ adapter: "./outputs/train" }}>
-          <Form.Item
-            name="adapter"
-            label="训练输出目录"
-            extra="一般是 outputs/train。目录里有 adapter_config.json 时按 LoRA 加载。"
-          >
-            <Input placeholder="./outputs/train" />
+        <Form form={form} layout="vertical">
+          <Form.Item name="trainRunId" label="训练实验" extra="目录里有 adapter 的实验才能评估。">
+            <Select
+              placeholder="选择训练实验"
+              options={trainRuns.rows.map((row) => ({
+                value: row.id,
+                label: `${row.label}（${row.status}${row.adapterReady ? " · adapter" : ""}）`,
+                disabled: !row.adapterReady && row.status !== "completed",
+              }))}
+            />
           </Form.Item>
         </Form>
         <Typography.Paragraph type="secondary">

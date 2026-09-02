@@ -1,6 +1,5 @@
 /**
- * 数据生成：上传种子、选择检索源、填写生成参数。
- * 检索源的展示名来自配置 title/description，提交时仍用 name。
+ * 数据生成：上传种子、选择检索源、按实验写入 outputs/data/<id>。
  */
 import { InboxOutlined } from "@ant-design/icons";
 import {
@@ -12,9 +11,13 @@ import {
   Form,
   Input,
   InputNumber,
+  Popconfirm,
+  Radio,
   Row,
   Space,
   Statistic,
+  Table,
+  Tag,
   Typography,
   Upload,
 } from "antd";
@@ -22,6 +25,7 @@ import type { UploadProps } from "antd";
 import { App as AntdApp } from "antd";
 import { useCallback, useEffect, useState } from "react";
 import { useJob } from "../jobs/JobContext";
+import { useRuns } from "../runs/useRuns";
 import { ConfirmDangerButton } from "../ui/ConfirmDangerButton";
 import { LogCard } from "../ui/LogCard";
 import { PageHeader } from "../ui/PageHeader";
@@ -50,6 +54,8 @@ interface SourceItem {
 }
 
 interface GenForm {
+  mode: "fresh" | "resume" | "continue";
+  label: string;
   pairsPerTerm: number;
   maxWords: number | null;
   cleanRatioPct: number;
@@ -62,12 +68,20 @@ interface GenForm {
   formats: string[];
   sources: string[];
   instruction: string;
-  output: string;
 }
+
+const STATUS_COLOR: Record<string, string> = {
+  running: "processing",
+  completed: "success",
+  interrupted: "warning",
+  failed: "error",
+  pending: "default",
+};
 
 export default function DataPage() {
   const { message } = AntdApp.useApp();
   const { job, start, cancel, isBusy } = useJob(["generate", "generate-eval"]);
+  const runs = useRuns("data");
   const [stats, setStats] = useState<DatasetStatus | null>(null);
   const [uploading, setUploading] = useState(false);
   const [sourceOpts, setSourceOpts] = useState<SourceItem[]>([]);
@@ -111,6 +125,8 @@ export default function DataPage() {
       (s) => s.enabled !== false,
     );
     form.setFieldsValue({
+      mode: "fresh",
+      label: "",
       pairsPerTerm: Number(cfg.pairsPerTerm ?? 3),
       maxWords: cfg.limitTerms == null ? 20 : Number(cfg.limitTerms),
       cleanRatioPct: clean > 1 ? clean : Math.round(clean * 100),
@@ -123,7 +139,6 @@ export default function DataPage() {
       formats: formats.filter(Boolean),
       sources: selected.map((s) => s.name),
       instruction: String(provBody.data?.instruction || cfg.instruction || ""),
-      output: "",
     });
   }, [form]);
 
@@ -133,8 +148,15 @@ export default function DataPage() {
   }, [loadStats, loadConfig]);
 
   useEffect(() => {
-    if (!job.busy) void loadStats();
-  }, [job.busy, loadStats]);
+    if (!job.busy) {
+      void loadStats();
+      void runs.refresh();
+    }
+  }, [job.busy, loadStats, runs.refresh]);
+
+  useEffect(() => {
+    if (runs.selected?.canResume) form.setFieldValue("mode", "resume");
+  }, [runs.selected?.canResume, form]);
 
   const uploadProps: UploadProps = {
     name: "file",
@@ -171,6 +193,10 @@ export default function DataPage() {
   async function generateBody() {
     const values = await form.validateFields();
     return {
+      mode: values.mode,
+      label: values.label || undefined,
+      runId: values.mode === "resume" ? runs.selectedId : undefined,
+      parentId: values.mode === "continue" ? runs.selectedId : undefined,
       pairsPerTerm: values.pairsPerTerm,
       limitTerms: values.maxWords && values.maxWords > 0 ? values.maxWords : 0,
       cleanRatio: values.cleanRatioPct,
@@ -179,7 +205,6 @@ export default function DataPage() {
       format: values.formats.join(","),
       sources: values.sources,
       instruction: values.instruction,
-      output: values.output || undefined,
       sentence: { minLen: values.minLen, maxLen: values.maxLen },
       rate: { requestsPerMinute: values.rpm, jitterSec: values.jitterSec },
     };
@@ -190,14 +215,19 @@ export default function DataPage() {
   }
 
   async function runEvalGenerate(): Promise<void> {
-    await start("/api/jobs/generate-eval", await generateBody());
+    const values = await form.validateFields();
+    await start("/api/jobs/generate-eval", {
+      ...(await generateBody()),
+      mode: values.mode === "fresh" ? "fresh" : "resume",
+      runId: runs.selectedId,
+    });
   }
 
   return (
     <>
       <PageHeader
         title="数据生成"
-        description="上传错词/正词表，检索真实句子做成训练和验证材料。每条样本：input 是待改的句子，output 是改对后的句子。"
+        description="每次生成是一次数据实验，写在 outputs/data 下。可以中断后续跑，也可以在上一份上追加。"
       />
       <PipelineStrip />
 
@@ -212,21 +242,53 @@ export default function DataPage() {
         </Col>
         <Col xs={24} md={8}>
           <Card>
-            <Statistic title="训练集" value={stats?.train.rows ?? 0} suffix="条" />
-            <Typography.Text className="stat-path">
-              {stats?.train.exists ? stats.train.path : "尚未生成"}
-            </Typography.Text>
+            <Statistic title="当前训练集" value={runs.selected?.trainRows ?? 0} suffix="条" />
+            <Typography.Text className="stat-path">{runs.selectedId ?? "未选实验"}</Typography.Text>
           </Card>
         </Col>
         <Col xs={24} md={8}>
           <Card>
-            <Statistic title="验证集" value={stats?.eval.rows ?? 0} suffix="条" />
-            <Typography.Text className="stat-path">
-              {stats?.eval.exists ? stats.eval.path : "尚未生成"}
-            </Typography.Text>
+            <Statistic title="当前验证集" value={runs.selected?.evalRows ?? 0} suffix="条" />
+            <Typography.Text className="stat-path">{runs.selected?.phase ?? "—"}</Typography.Text>
           </Card>
         </Col>
       </Row>
+
+      <Card title="数据实验" extra={runs.selected?.resumeHint}>
+        <Table
+          rowKey="id"
+          size="small"
+          pagination={false}
+          dataSource={runs.rows}
+          rowClassName={(row) => (row.id === runs.selectedId ? "ant-table-row-selected" : "")}
+          onRow={(row) => ({
+            onClick: () => void runs.select(row.id),
+          })}
+          columns={[
+            { title: "实验", dataIndex: "label", ellipsis: true },
+            {
+              title: "状态",
+              dataIndex: "status",
+              width: 110,
+              render: (status: string) => <Tag color={STATUS_COLOR[status] ?? "default"}>{status}</Tag>,
+            },
+            { title: "训练条数", dataIndex: "trainRows", width: 90 },
+            { title: "验证条数", dataIndex: "evalRows", width: 90 },
+            { title: "更新", dataIndex: "updatedAt", width: 180, render: (v: string) => v.replace("T", " ").slice(0, 19) },
+            {
+              title: "",
+              width: 70,
+              render: (_, row) => (
+                <Popconfirm title="删除该实验目录？" onConfirm={() => void runs.remove(row.id)}>
+                  <Button type="link" danger size="small" onClick={(e) => e.stopPropagation()}>
+                    删除
+                  </Button>
+                </Popconfirm>
+              ),
+            },
+          ]}
+        />
+      </Card>
 
       <Card title="① 种子数据">
         <Upload.Dragger {...uploadProps} disabled={uploading || isBusy("generate")}>
@@ -238,8 +300,8 @@ export default function DataPage() {
         </Upload.Dragger>
       </Card>
 
-      <Form form={form} layout="vertical">
-      <Card title="② 检索来源">
+      <Form form={form} layout="vertical" initialValues={{ mode: "fresh" }}>
+        <Card title="② 检索来源">
           <Form.Item
             name="sources"
             extra="可多选。先用第一个来源，不够再用后面的。检索不到就少写，不会编造句子。"
@@ -257,45 +319,33 @@ export default function DataPage() {
               }))}
             />
           </Form.Item>
-      </Card>
+        </Card>
 
-      <Card title="③ 生成参数">
-          <Typography.Paragraph type="secondary">
-            训练集和验证集用同一套参数。验证集句子不会和训练重复。每条都有待改句（input）和规范句（output）；再按比例混入本身正确、不应改动的句子。
-          </Typography.Paragraph>
+        <Card title="③ 生成参数">
           <Row gutter={16}>
             <Col xs={24} md={8}>
-              <Form.Item
-                name="cleanRatioPct"
-                label="混入正常样本比例（%）"
-                extra="input 与 output 相同的正确句，避免模型见句就改。"
-              >
+              <Form.Item name="cleanRatioPct" label="混入正常样本比例（%）">
                 <InputNumber min={0} max={100} style={{ width: "100%" }} />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
-              <Form.Item name="pairsPerTerm" label="每个词对最小句子数" extra="每个词至少写几条错句。越大数据越多。">
+              <Form.Item name="pairsPerTerm" label="每个词对最小句子数">
                 <InputNumber min={1} max={20} style={{ width: "100%" }} />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
-              <Form.Item name="maxWords" label="词条数上限（0=全部）" extra="试跑可填 20，全量填 0。">
+              <Form.Item name="maxWords" label="词条数上限（0=全部）">
                 <InputNumber min={0} style={{ width: "100%" }} />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
-              <Form.Item name="maxPages" label="每词最大翻页数" extra="检索翻几页。语料不够时不会凭空多写。">
+              <Form.Item name="maxPages" label="每词最大翻页数">
                 <InputNumber min={1} max={20} style={{ width: "100%" }} />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
               <Form.Item name="seed" label="随机种子">
                 <InputNumber style={{ width: "100%" }} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={8}>
-              <Form.Item name="output" label="输出文件名（可选）">
-                <Input placeholder="默认 outputs/sft/train.jsonl" />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
@@ -335,23 +385,37 @@ export default function DataPage() {
               </Form.Item>
             </Col>
           </Row>
-      </Card>
-      </Form>
+        </Card>
 
-      <Card title="④ 生成">
-        <Space wrap>
-          <Button type="primary" disabled={isBusy("generate") || !stats?.dict.exists} onClick={() => void runGenerate()}>
-            生成训练集
-          </Button>
-          <Button
-            disabled={isBusy("generate-eval") || !stats?.train.exists}
-            onClick={() => void runEvalGenerate()}
-          >
-            生成验证集
-          </Button>
-          <ConfirmDangerButton disabled={!job.busy} onConfirm={cancel} />
-        </Space>
-      </Card>
+        <Card title="④ 生成">
+          <Form.Item name="mode" label="方式">
+            <Radio.Group
+              optionType="button"
+              options={[
+                { value: "fresh", label: "全新生成" },
+                { value: "resume", label: "继续未完成", disabled: !runs.selected?.canResume },
+                { value: "continue", label: "在上次基础上追加", disabled: !runs.selectedId },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item name="label" label="实验名称（全新 / 追加时使用）">
+            <Input placeholder="例如 全量-人民网" />
+          </Form.Item>
+          <Space wrap>
+            <Button type="primary" disabled={isBusy("generate") || !stats?.dict.exists} onClick={() => void runGenerate()}>
+              生成训练集
+            </Button>
+            <Button disabled={isBusy("generate-eval") || !runs.selectedId} onClick={() => void runEvalGenerate()}>
+              生成验证集
+            </Button>
+            <ConfirmDangerButton
+              disabled={!job.busy}
+              onConfirm={cancel}
+              description="会立刻中断。已写入当前实验的 jsonl 会保留，下次可继续。"
+            />
+          </Space>
+        </Card>
+      </Form>
 
       {job.error && !job.busy ? <Alert type="error" showIcon message={job.error} /> : null}
 

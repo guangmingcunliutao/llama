@@ -13,12 +13,7 @@ export function defaultUserConfig(): UserConfig {
     cleanRatio: 0.1,
     maxPages: 3,
     sentence: { minLen: 16, maxLen: 220 },
-    train: {
-      config: "./outputs/llamafactory/train_sft.yaml",
-      outputDir: "./outputs/train",
-    },
     llamafactory: {
-      datasetDir: "./outputs/lf",
       prefix: "term",
       home: "",
       hub: "modelscope",

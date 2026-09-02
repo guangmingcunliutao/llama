@@ -200,6 +200,11 @@ export interface TrainHyperParams {
   output_dir?: string;
   template?: string;
   bf16?: boolean;
+  overwrite_output_dir?: boolean;
+  save_steps?: number;
+  save_total_limit?: number;
+  resume_from_checkpoint?: string;
+  adapter_name_or_path?: string;
 }
 
 /** yaml 解析结果，允许 null。 */
@@ -296,6 +301,9 @@ export interface OutputPaths {
       runsDir: string;
       bestDir: string;
       leaderboard: string;
+  lfPredict: string;
+  evalLf: string;
+  predictYaml: string;
 }
 
 export interface ResolvedRateConfig {
@@ -398,6 +406,10 @@ export interface GenerateFlags {
   maxPages?: string | number;
   seed?: string | number;
   signal?: AbortSignal;
+  mode?: "fresh" | "resume" | "continue";
+  runId?: string;
+  parentId?: string;
+  label?: string;
 }
 
 export interface ImportFlags {

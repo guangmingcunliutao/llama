@@ -9,6 +9,7 @@
   "scripts": {
     "build": "pnpm --filter @model-training/core build && pnpm --filter @model-training/web build && pnpm --filter @model-training/server build",
     "mtrain": "node ./packages/cli/bin/mtrain.js",
+    "server:dev": "pnpm --parallel --filter @model-training/core --filter @model-training/server dev",
     "webui": "pnpm --filter @model-training/server start",
     "dev": "pnpm --filter @model-training/web dev",
     "test": "pnpm --filter @model-training/core test && pnpm --filter @model-training/server test && pnpm --filter @model-training/web test",

@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   analyze,
+  createRun,
   detectLlamaFactory,
   evaluate,
   findBash,
@@ -15,9 +16,13 @@ import {
   infer,
   installLlamaFactory,
   loadUserConfig,
+  loadWorkspace,
   locateInstallScript,
   looksLikeLlamaFactoryHome,
+  patchWorkspace,
+  requireDataRun,
   startTrainFromConfig,
+  trainRunPaths,
   validateModelSource,
 } from "@model-training/core";
 import { asFlag, asStringList, isJsonObject } from "../api/envelope.js";
@@ -45,6 +50,10 @@ const generateCommand: JobCommand = {
       maxPages: asFlag(body.maxPages),
       sources: asStringList(body.sources),
       output: asFlag(body.output),
+      mode: asFlag(body.mode) as "fresh" | "resume" | "continue" | undefined,
+      runId: asFlag(body.runId),
+      parentId: asFlag(body.parentId),
+      label: asFlag(body.label),
       signal: job.signal,
     });
   },
@@ -54,8 +63,12 @@ const generateEvalCommand: JobCommand = {
   name: "generate-eval",
   async validate(app) {
     const cfg = await loadUserConfig({ command: "generate-eval", cwd: app.dataRoot() });
-    if (!fs.existsSync(cfg.paths.sft)) {
-      return `没有训练集 ${cfg.paths.sft}，请先生成训练数据`;
+    const ws = loadWorkspace(cfg.outDir);
+    try {
+      const data = requireDataRun(cfg.outDir, ws.dataRunId);
+      if (!fs.existsSync(data.paths.train)) return `没有训练集 ${data.paths.train}，请先生成训练数据`;
+    } catch (err) {
+      return err instanceof Error ? err.message : String(err);
     }
     return null;
   },
@@ -68,6 +81,8 @@ const generateEvalCommand: JobCommand = {
       cleanRatio: asFlag(body.cleanRatio),
       maxPages: asFlag(body.maxPages),
       sources: asStringList(body.sources),
+      mode: asFlag(body.mode) as "fresh" | "resume" | "continue" | undefined,
+      runId: asFlag(body.runId),
       signal: job.signal,
     });
   },
@@ -77,8 +92,15 @@ const trainCommand: JobCommand = {
   name: "train",
   async validate(app, body) {
     const cfg = await loadUserConfig({ command: "train", cwd: app.dataRoot() });
-    if (!fs.existsSync(cfg.paths.sft)) {
-      return `没有训练句子 ${cfg.paths.sft}，请先在「数据」页生成`;
+    const mode = asFlag(body.mode) ?? "fresh";
+    if (mode !== "resume") {
+      const dataId = asFlag(body.dataRunId) ?? loadWorkspace(cfg.outDir).dataRunId;
+      try {
+        const data = requireDataRun(cfg.outDir, dataId);
+        if (!fs.existsSync(data.paths.train)) return `没有训练句子 ${data.paths.train}，请先在「数据」页生成`;
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
     }
     const detect = detectLlamaFactory({
       home: asFlag(body.home) ?? cfg.lfHome,
@@ -111,6 +133,11 @@ const trainCommand: JobCommand = {
       bin: asFlag(body.bin) ?? latest.lfBin ?? undefined,
       hub: asFlag(body.hub) ?? latest.lfHub,
       hfEndpoint: asFlag(body.hfEndpoint) ?? latest.lfHfEndpoint,
+      mode: asFlag(body.mode),
+      runId: asFlag(body.runId),
+      parentId: asFlag(body.parentId),
+      dataRunId: asFlag(body.dataRunId),
+      label: asFlag(body.label),
     });
     if (result.cancelled) return;
     if (result.code !== 0) throw new Error(`llamafactory-cli 退出码 ${result.code}`);
@@ -128,9 +155,13 @@ const inferCommand: JobCommand = {
   name: "infer",
   async validate(app, body) {
     const cfg = await loadUserConfig({ command: "infer", cwd: app.dataRoot() });
-    const gold = cfg.paths.eval;
-    if (!fs.existsSync(gold)) {
-      return `没有验证集 ${gold}，请先在「数据生成」页生成验证集`;
+    const ws = loadWorkspace(cfg.outDir);
+    const dataId = asFlag(body.dataRunId) ?? ws.dataRunId;
+    try {
+      const data = requireDataRun(cfg.outDir, dataId);
+      if (!fs.existsSync(data.paths.eval)) return `没有验证集 ${data.paths.eval}，请先在「数据生成」页生成验证集`;
+    } catch (err) {
+      return err instanceof Error ? err.message : String(err);
     }
     const backend = inferJobBackend(body);
     if (backend === "llamafactory") {
@@ -147,17 +178,31 @@ const inferCommand: JobCommand = {
   },
   async execute(app, job, body) {
     const backend = inferJobBackend(body);
-    const adapter = asFlag(body.adapter);
     const raw = app.readConfigFile();
-    const prevTrain = isJsonObject(raw.train) ? raw.train : {};
     const prevInfer = isJsonObject(raw.infer) ? raw.infer : {};
     app.writeConfigFile({
       ...raw,
       infer: { ...prevInfer, backend },
-      ...(adapter
-        ? { train: { ...prevTrain, outputDir: adapter } }
-        : {}),
     });
+    const latest0 = await loadUserConfig({ command: "infer", cwd: app.dataRoot() });
+    const ws = loadWorkspace(latest0.outDir);
+    const trainId = asFlag(body.trainRunId) ?? ws.trainRunId;
+    const dataId = asFlag(body.dataRunId) ?? ws.dataRunId;
+    if (trainId) {
+      const evalRun = createRun(latest0.outDir, {
+        kind: "eval",
+        mode: "fresh",
+        label: asFlag(body.label) || "eval",
+        extra: { trainRunId: trainId, dataRunId: dataId },
+      });
+      patchWorkspace(latest0.outDir, {
+        evalRunId: evalRun.id,
+        trainRunId: trainId,
+        dataRunId: dataId ?? ws.dataRunId,
+      });
+    }
+    const adapter =
+      asFlag(body.adapter) || (trainId ? trainRunPaths(latest0.outDir, trainId).ckpt : undefined);
     const cfg = await loadUserConfig({ command: "infer", cwd: app.dataRoot() });
     await infer(cfg, {
       backend,

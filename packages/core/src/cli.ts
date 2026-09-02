@@ -17,6 +17,7 @@ import { prepareDict } from "./prepare.js";
 import { availableSourceTypes } from "./sources/registry.js";
 import { splitDataset } from "./split.js";
 import { startTrainFromConfig } from "./trainJob.js";
+import { listRuns, loadWorkspace, patchWorkspace, type RunKind } from "./runs/index.js";
 import { isRecord } from "./util.js";
 
 const HELP: Record<string, string> = {
@@ -31,9 +32,10 @@ const HELP: Record<string, string> = {
 命令:
   init           在当前目录生成 model-training.config.ts
   prepare        从监测 Excel 洗出错误词/正确词字典
-  generate       用正确词检索权威站点，生成错误句 / 正确句
-  generate-eval  独立检索写出验证集（句子不得出现在训练集）
-  train          启动 llamafactory-cli train（与 Web「训练」页相同）
+  generate       用正确词检索权威站点，生成错误句 / 正确句（写入数据实验）
+  generate-eval  独立检索写出验证集（写入当前数据实验）
+  train          启动 llamafactory-cli train（写入训练实验）
+  runs           列出或选中实验
   import         从外部 json/jsonl 导入（自动识别 alpaca / sharegpt）
   split          划分训练集与评估集（seen / unseen / keep）
   export-lf      将 split 产物导出到 LlamaFactory dataset_dir
@@ -73,14 +75,18 @@ const HELP: Record<string, string> = {
   generate: `generate — 按字典检索并写出 SFT 句对
 
 用正确词检索正文，按搜索结果从上往下每条取一句作为 output，再把正确词换成错误词作为 input。
-已有输出文件会断点续写。远程 HTTP 默认最多 5 次/分钟（缓存命中不计入），见 rate.requestsPerMinute。
+写入 outputs/data/<实验id>/train.jsonl。可中断后续跑。
 
 选项:
+  --fresh                 全新生成
+  --resume                从中断处继续（默认：若当前实验可续）
+  --continue-from <id>    在上一份数据上追加，派生新实验
+  --run <id>              指定数据实验
+  --label <name>          实验名称
   --dict <file>           覆盖配置里的字典
   --pairs-per-term <n>    每个词对最多保留几条
   --limit-terms <n>       只处理前 N 个正确词（试跑）
   --source <name>         只用配置里某一个源的 name
-  --output <file>         覆盖默认 outDir/sft/train.jsonl
   --format <list>         默认 messages；也可 alpaca / sharegpt
 `,
   "generate-eval": `generate-eval — 独立检索写出验证集
@@ -93,16 +99,20 @@ const HELP: Record<string, string> = {
 `,
   train: `train — 启动 LlamaFactory 训练
 
-写出 dataset_info.json 与训练 yaml（若不存在），检测本机 LlamaFactory 后再启动训练。
-未通过检测不会启动子进程。
+每次训练写入 outputs/train/<实验id>/。可从 checkpoint 续训，或基于上一份 adapter 再训。
 
 选项:
-  --train-config <yaml>   覆盖配置 train.config
-  --lf-home <dir>         LlamaFactory 仓库或安装根（含 src/llamafactory 或 .venv）
-  --lf-bin <file>         直接指定 llamafactory-cli
-  --base-model <id|path>  基座模型：本地目录或线上仓库 ID
-  --hub <name>            local / huggingface / modelscope / openmind（魔乐）
-  --hf-endpoint <url>     Hugging Face 镜像，例如 https://hf-mirror.com
+  --fresh
+  --resume
+  --continue-from <trainId>
+  --run <id>
+  --data <dataId>         训练集来自哪次数据实验
+  --label <name>
+  --lf-home <dir>
+  --lf-bin <file>
+  --base-model <id|path>
+  --hub <name>
+  --hf-endpoint <url>
 `,
   import: `import — 从外部语料导入为 alpaca 句对（sft/train.jsonl）
 
@@ -350,6 +360,13 @@ export async function main(argv: string[]): Promise<number> {
       all: { type: "boolean", default: false },
       force: { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
+      fresh: { type: "boolean", default: false },
+      resume: { type: "boolean", default: false },
+      "continue-from": { type: "string" },
+      run: { type: "string" },
+      label: { type: "string" },
+      data: { type: "string" },
+      kind: { type: "string" },
     },
     allowPositionals: false,
   });
@@ -380,6 +397,35 @@ export async function main(argv: string[]): Promise<number> {
 
   const cfg = await loadUserConfig({ command, config: values.config });
 
+  function runMode(): "fresh" | "resume" | "continue" | undefined {
+    if (values.fresh) return "fresh";
+    if (values.resume) return "resume";
+    if (values["continue-from"]) return "continue";
+    return undefined;
+  }
+
+  if (command === "runs") {
+    if (values.data || values.run || values.kind === "use") {
+      patchWorkspace(cfg.outDir, {
+        dataRunId: values.data ?? values.run ?? undefined,
+      });
+    }
+    const kinds: RunKind[] =
+      values.kind === "data" || values.kind === "train" || values.kind === "eval"
+        ? [values.kind]
+        : ["data", "train", "eval"];
+    const ws = loadWorkspace(cfg.outDir);
+    console.log(`[workspace] data=${ws.dataRunId ?? "—"} train=${ws.trainRunId ?? "—"} eval=${ws.evalRunId ?? "—"}`);
+    for (const kind of kinds) {
+      const rows = listRuns(cfg.outDir, kind);
+      console.log(`[${kind}] ${rows.length}`);
+      for (const row of rows) {
+        console.log(`  ${row.id}  ${row.status}  ${row.label}  resume=${row.canResume ? "yes" : "no"}`);
+      }
+    }
+    return 0;
+  }
+
   if (command === "generate") {
     await generate(cfg, {
       dict: values.dict,
@@ -388,6 +434,10 @@ export async function main(argv: string[]): Promise<number> {
       source: values.source,
       output: values.output,
       format: values.format,
+      mode: runMode(),
+      runId: values.run,
+      parentId: values["continue-from"],
+      label: values.label,
     });
     return 0;
   }
@@ -398,6 +448,8 @@ export async function main(argv: string[]): Promise<number> {
       source: values.source,
       pairsPerTerm: values["pairs-per-term"],
       limitTerms: values["limit-terms"],
+      mode: runMode(),
+      runId: values.run,
     });
     return 0;
   }
@@ -419,6 +471,11 @@ export async function main(argv: string[]): Promise<number> {
       hub: values.hub,
       hfEndpoint: values["hf-endpoint"],
       patch: baseModel ? { model_name_or_path: baseModel } : undefined,
+      mode: runMode(),
+      runId: values.run,
+      parentId: values["continue-from"],
+      dataRunId: values.data,
+      label: values.label,
     });
     return code.cancelled ? 130 : code.code;
   }

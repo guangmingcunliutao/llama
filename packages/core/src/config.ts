@@ -25,6 +25,15 @@ import type {
   UserConfigFn,
 } from "./types.js";
 import { isRecord } from "./util.js";
+import { loadWorkspace } from "./runs/store.js";
+import {
+  dataRunPaths,
+  evalRunPaths,
+  trainRunPaths,
+  unselectedDataPaths,
+  unselectedEvalPaths,
+  unselectedTrainPaths,
+} from "./runs/paths.js";
 
 const DEFAULT_INSTRUCTION =
   "请将句子中的不规范政治表述改正为规范表述，只输出改正后的句子。";
@@ -304,11 +313,15 @@ export async function loadUserConfig(opts: LoadUserConfigOptions): Promise<Resol
     resolveFrom(root, cfg.cacheDir || cfg.cache_dir) || path.join(os.homedir(), ".model-training", "cache");
 
   const dict = resolveFrom(root, cfg.dict || cfg.dict_path);
-  const trainConfig = resolveFrom(root, cfg.train?.config);
-  const trainOutputDir = resolveFrom(root, cfg.train?.outputDir);
+  const workspace = loadWorkspace(outDir);
+  const dataP = workspace.dataRunId ? dataRunPaths(outDir, workspace.dataRunId) : unselectedDataPaths(outDir);
+  const trainP = workspace.trainRunId ? trainRunPaths(outDir, workspace.trainRunId) : unselectedTrainPaths(outDir);
+  const evalP = workspace.evalRunId ? evalRunPaths(outDir, workspace.evalRunId) : unselectedEvalPaths(outDir);
+  const trainConfig = trainP.yaml;
+  const trainOutputDir = trainP.ckpt;
   const importSource = resolveFrom(root, cfg.import?.source ?? cfg.importSource);
   const importLimit = cfg.import?.limit ?? cfg.importLimit ?? null;
-  const lfDatasetDir = resolveFrom(root, cfg.llamafactory?.datasetDir ?? cfg.lfDatasetDir);
+  const lfDatasetDir = trainP.lf;
   const lfDatasetInfo = cfg.llamafactory?.datasetInfo ?? cfg.lfDatasetInfo ?? "dataset_info.json";
   const lfPrefix = cfg.llamafactory?.prefix ?? cfg.lfPrefix ?? "corr";
   const lfHome =
@@ -369,26 +382,29 @@ export async function loadUserConfig(opts: LoadUserConfigOptions): Promise<Resol
     lfModelCacheDir,
     paths: {
       dict,
-      sft: path.join(outDir, "sft", "train.jsonl"),
-      sftSharegpt: path.join(outDir, "sft", "train_sharegpt.jsonl"),
-      trainSplit: path.join(outDir, "splits", "train.jsonl"),
-      trainSplitSharegpt: path.join(outDir, "splits", "train_sharegpt.jsonl"),
-      eval: path.join(outDir, "eval", "eval.jsonl"),
-      evalSeen: path.join(outDir, "eval", "eval_seen_pair.jsonl"),
-      evalUnseen: path.join(outDir, "eval", "eval_unseen_pair.jsonl"),
-      evalKeep: path.join(outDir, "eval", "eval_keep.jsonl"),
-      pred: path.join(outDir, "infer", "pred.jsonl"),
-      predSeen: path.join(outDir, "infer", "pred_seen_pair.jsonl"),
-      predUnseen: path.join(outDir, "infer", "pred_unseen_pair.jsonl"),
-      predKeep: path.join(outDir, "infer", "pred_keep.jsonl"),
-      metrics: path.join(outDir, "reports", "metrics.json"),
-      scored: path.join(outDir, "reports", "scored.jsonl"),
-      splitReport: path.join(outDir, "reports", "split.json"),
-      analysis: path.join(outDir, "reports", "analysis.md"),
-      compare: path.join(outDir, "reports", "compare.md"),
-      runsDir: path.join(outDir, "reports", "runs"),
-      bestDir: path.join(outDir, "reports", "best"),
-      leaderboard: path.join(outDir, "reports", "leaderboard.json"),
+      sft: dataP.train,
+      sftSharegpt: dataP.trainSharegpt,
+      trainSplit: dataP.train,
+      trainSplitSharegpt: dataP.trainSharegpt,
+      eval: dataP.eval,
+      evalSeen: dataP.evalSeen,
+      evalUnseen: dataP.evalUnseen,
+      evalKeep: dataP.evalKeep,
+      pred: evalP.pred,
+      predSeen: evalP.predSeen,
+      predUnseen: evalP.predUnseen,
+      predKeep: evalP.predKeep,
+      metrics: evalP.metrics,
+      scored: evalP.scored,
+      splitReport: dataP.splitReport,
+      analysis: evalP.analysis,
+      compare: path.join(outDir, "eval", "_leaderboard", "compare.md"),
+      runsDir: path.join(outDir, "eval", "_leaderboard", "runs"),
+      bestDir: path.join(outDir, "eval", "_leaderboard", "best"),
+      leaderboard: path.join(outDir, "eval", "_leaderboard", "leaderboard.json"),
+      lfPredict: evalP.lfPredict,
+      evalLf: evalP.lf,
+      predictYaml: evalP.predictYaml,
     },
   };
 }

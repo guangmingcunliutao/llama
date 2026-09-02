@@ -10,6 +10,7 @@ import jobsRoute from "./jobs.js";
 import providersRoute from "./providers.js";
 import quantDetectRoute from "./quantDetect.js";
 import reportsRoute from "./reports.js";
+import runsRoute from "./runs.js";
 import trainEnvRoute from "./trainEnv.js";
 import uploadSeedRoute from "./uploadSeed.js";
 
@@ -21,6 +22,7 @@ const PLUGINS = [
   uploadSeedRoute,
   jobsRoute,
   reportsRoute,
+  runsRoute,
   quantDetectRoute,
   trainEnvRoute,
 ];

@@ -1,8 +1,10 @@
-/** 写出训练配置并启动。环境安装在右下角，本页只填执行目录和训练设置。 */
-import { Alert, Button, Card, Col, Form, Input, InputNumber, Radio, Row, Select, Space } from "antd";
+/** 写出训练配置并启动。每次训练是一次实验，写在 outputs/train/<id>。 */
+import { Alert, Button, Card, Col, Form, Input, InputNumber, Popconfirm, Radio, Row, Select, Space, Table, Tag } from "antd";
 import { App as AntdApp } from "antd";
 import { useEffect, useState } from "react";
 import { useJob } from "../jobs/JobContext";
+import { useRuns } from "../runs/useRuns";
+import type { RunSummary } from "../runs/types";
 import { ConfirmDangerButton } from "../ui/ConfirmDangerButton";
 import { LogCard } from "../ui/LogCard";
 import { PageHeader } from "../ui/PageHeader";
@@ -11,6 +13,9 @@ import { PipelineStrip } from "../ui/PipelineStrip";
 export const menu = { title: "训练", icon: "PlayCircleOutlined", order: 20 };
 
 interface TrainForm {
+  mode: "fresh" | "resume" | "continue";
+  label: string;
+  dataRunId: string;
   lfHome: string;
   modelKind: "local" | "online";
   hub: "huggingface" | "modelscope" | "openmind";
@@ -24,20 +29,35 @@ interface TrainForm {
   cutoff_len: number;
 }
 
+const STATUS_COLOR: Record<string, string> = {
+  running: "processing",
+  completed: "success",
+  interrupted: "warning",
+  failed: "error",
+  pending: "default",
+};
+
 export default function TrainPage() {
   const { message } = AntdApp.useApp();
   const { job, start, cancel, isBusy } = useJob("train");
+  const trainRuns = useRuns("train");
+  const dataRuns = useRuns("data");
   const [form] = Form.useForm<TrainForm>();
-  const [yaml, setYaml] = useState<string | null>(null);
+  const [dataOptions, setDataOptions] = useState<RunSummary[]>([]);
 
   useEffect(() => {
     void (async () => {
-      const [reportRes, cfgRes] = await Promise.all([fetch("/api/reports"), fetch("/api/config")]);
+      const [reportRes, cfgRes, dataRes] = await Promise.all([
+        fetch("/api/reports"),
+        fetch("/api/config"),
+        fetch("/api/runs?kind=data"),
+      ]);
       const reportBody = (await reportRes.json()) as {
         data?: { trainYaml?: string | null; trainKnobs?: Record<string, unknown> };
       };
       const cfgBody = (await cfgRes.json()) as { data?: Record<string, unknown> };
-      setYaml(reportBody.data?.trainYaml ?? null);
+      const dataBody = (await dataRes.json()) as { data?: { runs?: RunSummary[]; workspace?: { dataRunId?: string | null } } };
+      setDataOptions(dataBody.data?.runs ?? []);
       const knobs = reportBody.data?.trainKnobs ?? {};
       const model = String(knobs.model_name_or_path ?? "Qwen/Qwen3-0.6B");
       const lf = (cfgBody.data?.llamafactory ?? {}) as {
@@ -54,6 +74,9 @@ export default function TrainPage() {
       const hub =
         lf.hub === "huggingface" || lf.hub === "openmind" || lf.hub === "modelscope" ? lf.hub : "modelscope";
       form.setFieldsValue({
+        mode: trainRuns.selected?.canResume ? "resume" : "fresh",
+        label: "",
+        dataRunId: dataBody.data?.workspace?.dataRunId ?? "",
         lfHome: lf.home ?? "",
         modelKind: local ? "local" : "online",
         hub,
@@ -67,7 +90,11 @@ export default function TrainPage() {
         cutoff_len: Number(knobs.cutoff_len ?? 256),
       });
     })();
-  }, [form, job.busy]);
+  }, [form, job.busy, trainRuns.selected?.canResume]);
+
+  useEffect(() => {
+    if (!job.busy) void trainRuns.refresh();
+  }, [job.busy, trainRuns.refresh]);
 
   async function run(): Promise<void> {
     const values = form.getFieldsValue(true);
@@ -78,6 +105,11 @@ export default function TrainPage() {
     }
     try {
       await start("/api/jobs/train", {
+        mode: values.mode,
+        label: values.label || undefined,
+        runId: values.mode === "resume" ? trainRuns.selectedId : undefined,
+        parentId: values.mode === "continue" ? trainRuns.selectedId : undefined,
+        dataRunId: values.dataRunId || undefined,
         home: String(values.lfHome ?? "").trim(),
         hub: values.modelKind === "local" ? "local" : (values.hub ?? "modelscope"),
         hfEndpoint: String(values.hfEndpoint ?? "").trim(),
@@ -100,22 +132,79 @@ export default function TrainPage() {
     <>
       <PageHeader
         title="训练"
-        description="用训练集微调底模。结果保存在 outputs/train。训完后去评估页看纠错分数。"
+        description="每次训练写入 outputs/train 下的独立实验。可从 checkpoint 续训，或基于上一份 LoRA 再训。"
       />
       <PipelineStrip />
       {job.error && !job.busy ? <Alert type="error" showIcon message={job.error} /> : null}
-      <Form form={form} layout="vertical" initialValues={{ modelKind: "online", hub: "modelscope", hfEndpoint: "" }}>
+
+      <Card title="训练实验" extra={trainRuns.selected?.resumeHint}>
+        <Table
+          rowKey="id"
+          size="small"
+          pagination={false}
+          dataSource={trainRuns.rows}
+          onRow={(row) => ({ onClick: () => void trainRuns.select(row.id) })}
+          rowClassName={(row) => (row.id === trainRuns.selectedId ? "ant-table-row-selected" : "")}
+          columns={[
+            { title: "实验", dataIndex: "label", ellipsis: true },
+            {
+              title: "状态",
+              dataIndex: "status",
+              width: 110,
+              render: (status: string) => <Tag color={STATUS_COLOR[status] ?? "default"}>{status}</Tag>,
+            },
+            { title: "checkpoint", dataIndex: "lastCheckpoint", width: 140, render: (v: string | null) => v ?? "—" },
+            {
+              title: "adapter",
+              dataIndex: "adapterReady",
+              width: 90,
+              render: (v: boolean) => (v ? "有" : "无"),
+            },
+            {
+              title: "",
+              width: 70,
+              render: (_, row) => (
+                <Popconfirm title="删除该训练实验？" onConfirm={() => void trainRuns.remove(row.id)}>
+                  <Button type="link" danger size="small" onClick={(e) => e.stopPropagation()}>
+                    删除
+                  </Button>
+                </Popconfirm>
+              ),
+            },
+          ]}
+        />
+      </Card>
+
+      <Form form={form} layout="vertical" initialValues={{ modelKind: "online", hub: "modelscope", hfEndpoint: "", mode: "fresh" }}>
         <Card title="LlamaFactory 目录" extra="还没装？点右下角扳手安装一次即可。">
-          <Form.Item
-            name="lfHome"
-            label="执行目录"
-            extra="装好 LlamaFactory 的那个文件夹。不是模型权重目录。请粘贴或输入完整路径。"
-          >
+          <Form.Item name="lfHome" label="执行目录" extra="装好 LlamaFactory 的那个文件夹。请粘贴完整路径。">
             <Input placeholder="例如 E:\llama\LlamaFactory" />
           </Form.Item>
         </Card>
-        <Card title="超参" extra={yaml ? <span>将写入 {yaml}</span> : null}>
-          <Form.Item name="modelKind" label="基座模型来源" extra="本地填已下载的权重目录；线上按仓库 ID 拉取。">
+        <Card title="超参">
+          <Form.Item name="mode" label="方式">
+            <Radio.Group
+              optionType="button"
+              options={[
+                { value: "fresh", label: "全新训练" },
+                { value: "resume", label: "继续未完成", disabled: !trainRuns.selected?.canResume },
+                { value: "continue", label: "基于上次再训练", disabled: !trainRuns.selected?.adapterReady },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item name="label" label="实验名称">
+            <Input placeholder="例如 qwen06b-r8" />
+          </Form.Item>
+          <Form.Item name="dataRunId" label="训练集（数据实验）" extra="全新训练和再训练需要。">
+            <Select
+              allowClear
+              options={(dataOptions.length ? dataOptions : dataRuns.rows).map((row) => ({
+                value: row.id,
+                label: `${row.label}（${row.trainRows ?? 0} 条）`,
+              }))}
+            />
+          </Form.Item>
+          <Form.Item name="modelKind" label="基座模型来源">
             <Radio.Group
               optionType="button"
               options={[
@@ -131,7 +220,7 @@ export default function TrainPage() {
                 <>
                   <Row gutter={16}>
                     <Col xs={24} md={10}>
-                      <Form.Item name="hub" label="线上模型源" extra="国内默认 ModelScope。" hidden={local}>
+                      <Form.Item name="hub" label="线上模型源" hidden={local}>
                         <Select
                           options={[
                             { value: "modelscope", label: "魔搭 ModelScope" },
@@ -142,21 +231,12 @@ export default function TrainPage() {
                       </Form.Item>
                     </Col>
                     <Col xs={24} md={14}>
-                      <Form.Item
-                        name="hfEndpoint"
-                        label="Hugging Face 镜像（可空）"
-                        extra="仅 Hugging Face 需要。国内可填 https://hf-mirror.com"
-                        hidden={local}
-                      >
+                      <Form.Item name="hfEndpoint" label="Hugging Face 镜像（可空）" hidden={local}>
                         <Input placeholder="可留空" />
                       </Form.Item>
                     </Col>
                   </Row>
-                  <Form.Item
-                    name="model_name_or_path"
-                    label={local ? "本地模型路径" : "仓库 ID"}
-                    extra={local ? "填写含 config.json 的权重目录" : "例如 Qwen/Qwen3-0.6B"}
-                  >
+                  <Form.Item name="model_name_or_path" label={local ? "本地模型路径" : "仓库 ID"}>
                     {local ? <Input placeholder="例如 E:\models\Qwen2.5-0.5B-Instruct" /> : <Input placeholder="Qwen/Qwen3-0.6B" />}
                   </Form.Item>
                 </>
@@ -165,17 +245,17 @@ export default function TrainPage() {
           </Form.Item>
           <Row gutter={16}>
             <Col xs={24} md={12}>
-              <Form.Item name="template" label="对话模板 template" extra="Qwen 系列一般填 qwen3。">
+              <Form.Item name="template" label="对话模板 template">
                 <Input />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
-              <Form.Item name="lora_rank" label="LoRA rank" extra="越大越能记住，也越占显存。常用 8～16。">
+              <Form.Item name="lora_rank" label="LoRA rank">
                 <InputNumber min={1} max={256} style={{ width: "100%" }} />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
-              <Form.Item name="learning_rate" label="学习率" extra="过大容易学坏。">
+              <Form.Item name="learning_rate" label="学习率">
                 <Input />
               </Form.Item>
             </Col>
@@ -185,12 +265,12 @@ export default function TrainPage() {
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
-              <Form.Item name="per_device_train_batch_size" label="每卡 batch" extra="显存不够就填 1。">
+              <Form.Item name="per_device_train_batch_size" label="每卡 batch">
                 <InputNumber min={1} style={{ width: "100%" }} />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
-              <Form.Item name="cutoff_len" label="截断长度 cutoff_len" extra="超过该长度的句子会被截断。">
+              <Form.Item name="cutoff_len" label="截断长度 cutoff_len">
                 <InputNumber min={128} style={{ width: "100%" }} />
               </Form.Item>
             </Col>
@@ -199,7 +279,11 @@ export default function TrainPage() {
             <Button type="primary" htmlType="button" disabled={isBusy("train")} onClick={() => void run()}>
               开始训练
             </Button>
-            <ConfirmDangerButton disabled={!job.busy} onConfirm={cancel} />
+            <ConfirmDangerButton
+              disabled={!job.busy}
+              onConfirm={cancel}
+              description="会结束训练进程。已保存的 checkpoint 会留在当前实验里，可继续未完成训练。"
+            />
           </Space>
         </Card>
       </Form>

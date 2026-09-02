@@ -96,6 +96,7 @@ export function EnvironmentFab() {
       <Drawer
         title="训练环境"
         open={open}
+        forceRender
         onClose={() => setOpen(false)}
         width={440}
         extra={

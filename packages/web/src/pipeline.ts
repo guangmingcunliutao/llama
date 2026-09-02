@@ -10,7 +10,7 @@ export const PIPELINE = [
     path: "/train",
     title: "训练",
     blurb: "LoRA 微调",
-    detail: "用训练集微调底模。结果在 outputs/train。",
+    detail: "用训练集微调底模。每次训练是一次实验，可中断后续训。",
   },
   {
     path: "/eval",

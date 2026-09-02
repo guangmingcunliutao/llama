@@ -182,14 +182,17 @@ export async function inferLlamaFactorySlice(
 ): Promise<string> {
   const golds = readJsonOrJsonl<SftExample>(goldFile);
   if (!golds.length) throw new Error(`评估集为空: ${goldFile}`);
-  const datasetDir = cfg.lfDatasetDir || path.join(cfg.outDir, "lf");
+  const datasetDir = cfg.paths.evalLf;
   const evalCopy = path.join(datasetDir, "term_eval.jsonl");
   writeJsonl(evalCopy, golds);
   upsertDatasetEntry(datasetDir, "term_eval", evalCopy);
 
-  const yamlPath = cfg.trainConfig || path.join(cfg.outDir, "llamafactory", "train_sft.yaml");
-  const knobs = fs.existsSync(yamlPath) ? parseTrainYaml(fs.readFileSync(yamlPath, "utf8")) : {};
-  const adapterRaw = (flags.adapter || cfg.trainOutputDir || path.join(cfg.outDir, "train")).trim();
+  const yamlPath = cfg.trainConfig;
+  const knobs = yamlPath && fs.existsSync(yamlPath) ? parseTrainYaml(fs.readFileSync(yamlPath, "utf8")) : {};
+  const adapterRaw = (flags.adapter || cfg.trainOutputDir || "").trim();
+  if (!adapterRaw) {
+    throw new Error("没有可加载的模型。请选择一次训练实验。");
+  }
   const adapterDir = path.isAbsolute(adapterRaw) ? adapterRaw : path.resolve(cfg.root, adapterRaw);
   const lora = looksLikeLoraAdapter(adapterDir);
   const full = looksLikeHfModelDir(adapterDir);
@@ -199,10 +202,10 @@ export async function inferLlamaFactorySlice(
     (full ? adapterDir.replaceAll("\\", "/") : "") ||
     String(knobs.model_name_or_path ?? "");
   if (!model) {
-    throw new Error("没有可加载的模型。请先完成训练（outputs/train 里应有 adapter），或在训练页填写基座模型。");
+    throw new Error("没有可加载的模型。请先完成训练（实验目录 ckpt 里应有 adapter），或在训练页填写基座模型。");
   }
-  const outDir = path.join(cfg.outDir, "lf-predict");
-  const predictYaml = path.join(cfg.outDir, "llamafactory", "predict.yaml");
+  const outDir = cfg.paths.lfPredict;
+  const predictYaml = cfg.paths.predictYaml;
   writePredictYaml({
     file: predictYaml,
     model,

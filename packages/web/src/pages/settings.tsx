@@ -16,7 +16,6 @@ export default function SettingsPage() {
       .then((body: { data?: Record<string, unknown> }) => {
         const cfg = body.data ?? {};
         const infer = (cfg.infer ?? {}) as { backend?: string; http?: { url?: string; model?: string } };
-        const train = (cfg.train ?? {}) as { config?: string; outputDir?: string };
         form.setFieldsValue({
           outDir: cfg.outDir ?? "./outputs",
           dict: cfg.dict ?? "./data/term_pairs.jsonl",
@@ -25,9 +24,6 @@ export default function SettingsPage() {
           inferBackend: infer.backend && infer.backend !== "rule" ? infer.backend : "llamafactory",
           inferUrl: infer.http?.url ?? "",
           inferModel: infer.http?.model ?? "",
-          trainConfig: train.config ?? "./outputs/llamafactory/train_sft.yaml",
-          trainOutputDir: train.outputDir ?? "./outputs/train",
-          lfDatasetDir: (cfg.llamafactory as { datasetDir?: string } | undefined)?.datasetDir ?? "./outputs/lf",
           lfHome: (cfg.llamafactory as { home?: string } | undefined)?.home ?? "",
           lfBin: (cfg.llamafactory as { bin?: string } | undefined)?.bin ?? "",
           lfHub: (cfg.llamafactory as { hub?: string } | undefined)?.hub ?? "modelscope",
@@ -49,10 +45,8 @@ export default function SettingsPage() {
         backend: values.inferBackend,
         http: { url: values.inferUrl, model: values.inferModel },
       },
-      train: { config: values.trainConfig, outputDir: values.trainOutputDir },
       llamafactory: {
         ...((current.data?.llamafactory as object) ?? {}),
-        datasetDir: values.lfDatasetDir,
         home: values.lfHome,
         bin: values.lfBin,
         hub: values.lfHub,
@@ -104,20 +98,7 @@ export default function SettingsPage() {
           <Form.Item name="inferModel" label="推理模型名">
             <Input />
           </Form.Item>
-          <Form.Item name="trainConfig" label="训练 yaml">
-            <Input />
-          </Form.Item>
-          <Form.Item
-            name="trainOutputDir"
-            label="训练输出目录"
-            extra="训练结果文件夹，给评估页加载模型。调参不要选这里，调参选评估写出的预测文件夹。"
-          >
-            <Input />
-          </Form.Item>
-          <Form.Item name="lfDatasetDir" label="LlamaFactory dataset_dir">
-            <Input />
-          </Form.Item>
-          <Form.Item name="lfHome" label="LlamaFactory 目录" extra="含 src/llamafactory 或 .venv 的安装根。">
+          <Form.Item name="lfHome" label="LlamaFactory 目录" extra="含 src/llamafactory 或 .venv 的安装根。训练/评估产物按实验写在 outDir 下，不必再填 yaml 路径。">
             <Input placeholder="例如 D:\LLaMA-Factory" />
           </Form.Item>
           <Form.Item name="lfBin" label="llamafactory-cli（可选）">

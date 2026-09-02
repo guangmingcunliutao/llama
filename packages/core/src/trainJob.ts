@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { killProcessTree } from "./killTree.js";
 import {
   decodeSubprocessBuffer,
   detectLlamaFactory,
@@ -15,6 +16,10 @@ import {
   validateModelSource,
   type ModelHub,
 } from "./modelSource.js";
+import { appendRunLog, patchRun } from "./runs/store.js";
+import { resolveTrainSession } from "./runs/trainSession.js";
+import { hasLoraAdapter } from "./runs/adapter.js";
+import { findLatestCheckpoint } from "./runs/trainResume.js";
 import { patchTrainYaml, parseTrainYaml } from "./trainYaml.js";
 import type { ResolvedConfig } from "./types.js";
 
@@ -29,6 +34,7 @@ export interface TrainRunOptions {
   modelCacheDir?: string | null;
   signal?: AbortSignal;
   onLog?: (line: string) => void;
+  onSpawn?: (pid: number) => void;
 }
 
 export function resolveLlamaFactoryBin(explicit?: string): string | null {
@@ -67,7 +73,8 @@ preprocessing_num_workers: 4
 ### output
 output_dir: ./outputs/train
 logging_steps: 10
-save_steps: 200
+save_steps: 50
+save_total_limit: 3
 plot_loss: true
 overwrite_output_dir: true
 
@@ -142,9 +149,10 @@ export function runTrain(opts: TrainRunOptions): Promise<{ code: number; cancell
       shell: spec.shell,
       windowsHide: true,
     });
+    if (child.pid) opts.onSpawn?.(child.pid);
 
     const onAbort = (): void => {
-      child.kill();
+      killProcessTree(child);
     };
     opts.signal?.addEventListener("abort", onAbort);
 
@@ -170,9 +178,13 @@ export interface StartTrainOptions {
   hfEndpoint?: string | null;
   modelCacheDir?: string | null;
   patch?: Record<string, string | number | boolean>;
+  mode?: string;
+  runId?: string;
+  parentId?: string;
+  dataRunId?: string;
+  label?: string;
 }
 
-/** 写出 dataset_info + yaml，再 spawn llamafactory-cli train。 */
 export function prepareTrainFiles(
   cfg: ResolvedConfig,
   extraPatch?: Record<string, string | number | boolean>,
@@ -189,35 +201,78 @@ export function prepareTrainFiles(
   return { yamlPath, datasetDir };
 }
 
+/** 写出 dataset_info + yaml，再 spawn llamafactory-cli train。 */
 export async function startTrainFromConfig(
   cfg: ResolvedConfig,
   opts: StartTrainOptions = {},
-): Promise<{ code: number; cancelled: boolean }> {
-  if (!fs.existsSync(cfg.paths.sft)) {
-    throw new Error(`没有训练集 ${cfg.paths.sft}，请先在「数据生成」页或执行 mtrain generate`);
-  }
+): Promise<{ code: number; cancelled: boolean; runId: string }> {
+  const session = resolveTrainSession(cfg.outDir, {
+    mode: opts.mode,
+    runId: opts.runId,
+    parentId: opts.parentId,
+    dataRunId: opts.dataRunId,
+    label: opts.label,
+    knobs: opts.patch,
+  });
+  const { paths, params, resumeFrom } = session;
+  const runId = session.meta.id;
+
   const home = opts.home ?? cfg.lfHome;
   const bin = opts.bin ?? cfg.lfBin ?? undefined;
   const detect = detectLlamaFactory({ home, bin });
   if (!detect.ok) {
+    patchRun(cfg.outDir, "train", runId, { status: "failed", error: detect.errors.join("\n") });
     throw new Error(detect.errors.join("\n"));
   }
-  const patch = { ...(opts.patch ?? {}) };
+
+  const patch: Record<string, string | number | boolean> = { ...params.knobs, ...(opts.patch ?? {}) };
   const modelRaw = typeof patch.model_name_or_path === "string" ? patch.model_name_or_path : "";
   const requestedHub = parseModelHub(opts.hub) ?? cfg.lfHub;
   if (modelRaw) {
     const hubForPath = inferModelHub(modelRaw, requestedHub);
     patch.model_name_or_path = resolvedModelNameOrPath({ root: cfg.root, model: modelRaw, hub: hubForPath });
   }
-  const { yamlPath } = prepareTrainFiles(cfg, patch);
-  const knobs = parseTrainYaml(fs.readFileSync(yamlPath, "utf8"));
+  patch.dataset_dir = paths.lf.replaceAll("\\", "/");
+  patch.output_dir = paths.ckpt.replaceAll("\\", "/");
+  patch.save_steps = patch.save_steps ?? 50;
+  patch.save_total_limit = patch.save_total_limit ?? 3;
+  if (session.meta.mode === "resume" && resumeFrom) {
+    patch.overwrite_output_dir = false;
+    patch.resume_from_checkpoint = resumeFrom.replaceAll("\\", "/");
+  } else {
+    patch.overwrite_output_dir = true;
+  }
+  if (session.meta.mode === "continue") {
+    const parentId = session.meta.parentId;
+    if (parentId) {
+      const parentCkpt = path.join(cfg.outDir, "train", parentId, "ckpt");
+      patch.adapter_name_or_path = parentCkpt.replaceAll("\\", "/");
+    }
+  }
+
+  writeDatasetInfo(paths.lf, paths.sftCopy);
+  ensureTrainYaml(paths.yaml, patch);
+  const knobs = parseTrainYaml(fs.readFileSync(paths.yaml, "utf8"));
   const model = String(knobs.model_name_or_path ?? "");
   const hub = inferModelHub(model, requestedHub);
   const invalid = validateModelSource({ root: cfg.root, model, hub });
-  if (invalid) throw new Error(invalid);
-  for (const note of detect.notes) opts.onLog?.(note);
-  return runTrain({
-    yamlPath,
+  if (invalid) {
+    patchRun(cfg.outDir, "train", runId, { status: "failed", error: invalid });
+    throw new Error(invalid);
+  }
+
+  const onLog = (line: string): void => {
+    opts.onLog?.(line);
+    appendRunLog(paths.logs, line);
+  };
+  for (const note of detect.notes) onLog(note);
+  onLog(`[train] run=${runId} mode=${session.meta.mode} data=${params.dataRunId}`);
+  if (resumeFrom) onLog(`[train] resume_from_checkpoint=${resumeFrom}`);
+
+  patchRun(cfg.outDir, "train", runId, { status: "running", pid: process.pid, error: null });
+
+  const result = await runTrain({
+    yamlPath: paths.yaml,
     cwd: cfg.root,
     home,
     bin,
@@ -225,6 +280,44 @@ export async function startTrainFromConfig(
     hfEndpoint: opts.hfEndpoint ?? cfg.lfHfEndpoint,
     modelCacheDir: opts.modelCacheDir ?? cfg.lfModelCacheDir,
     signal: opts.signal,
-    onLog: opts.onLog,
+    onLog,
+    onSpawn: (pid) => {
+      patchRun(cfg.outDir, "train", runId, { status: "running", pid });
+    },
   });
+
+  const latest = findLatestCheckpoint(paths.ckpt);
+  const adapterReady = hasLoraAdapter(paths.ckpt);
+  if (result.cancelled) {
+    patchRun(cfg.outDir, "train", runId, {
+      status: "interrupted",
+      pid: null,
+      exitCode: 130,
+      lastCheckpoint: latest ? path.basename(latest) : null,
+      resumeFrom: latest,
+      adapterReady,
+    });
+    return { ...result, runId };
+  }
+  if (result.code !== 0) {
+    patchRun(cfg.outDir, "train", runId, {
+      status: "failed",
+      pid: null,
+      exitCode: result.code,
+      lastCheckpoint: latest ? path.basename(latest) : null,
+      resumeFrom: latest,
+      adapterReady,
+      error: `llamafactory-cli 退出码 ${result.code}`,
+    });
+    return { ...result, runId };
+  }
+  patchRun(cfg.outDir, "train", runId, {
+    status: "completed",
+    pid: null,
+    exitCode: 0,
+    error: null,
+    lastCheckpoint: adapterReady ? "final" : latest ? path.basename(latest) : null,
+    adapterReady,
+  });
+  return { ...result, runId };
 }

@@ -3,13 +3,14 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { countJsonl, loadUserConfig, prepareDict } from "@model-training/core";
+import { countJsonl, loadUserConfig, loadWorkspace, prepareDict, dataRunPaths } from "@model-training/core";
 
 export async function datasetStatus(cwd: string) {
   const cfg = await loadUserConfig({ command: "status", cwd });
   const dictPath = cfg.dict;
-  const trainPath = cfg.paths.sft;
-  const evalPath = cfg.paths.eval;
+  const ws = loadWorkspace(cfg.outDir);
+  const trainPath = ws.dataRunId ? dataRunPaths(cfg.outDir, ws.dataRunId).train : null;
+  const evalPath = ws.dataRunId ? dataRunPaths(cfg.outDir, ws.dataRunId).eval : null;
   return {
     dict: {
       path: dictPath,
@@ -18,14 +19,15 @@ export async function datasetStatus(cwd: string) {
     },
     train: {
       path: trainPath,
-      exists: fs.existsSync(trainPath),
-      rows: countJsonl(trainPath),
+      exists: Boolean(trainPath && fs.existsSync(trainPath)),
+      rows: trainPath ? countJsonl(trainPath) : 0,
     },
     eval: {
       path: evalPath,
-      exists: fs.existsSync(evalPath),
-      rows: countJsonl(evalPath),
+      exists: Boolean(evalPath && fs.existsSync(evalPath)),
+      rows: evalPath ? countJsonl(evalPath) : 0,
     },
+    workspace: ws,
   };
 }
 

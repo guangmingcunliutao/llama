@@ -20,6 +20,11 @@ export const TRAIN_KEYS = [
   "output_dir",
   "template",
   "bf16",
+  "overwrite_output_dir",
+  "save_steps",
+  "save_total_limit",
+  "resume_from_checkpoint",
+  "adapter_name_or_path",
 ] as const;
 
 export type TrainKey = (typeof TRAIN_KEYS)[number];
