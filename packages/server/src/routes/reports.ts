@@ -35,6 +35,7 @@ const reportsRoute: FastifyPluginAsync = async (app) => {
       analysis: readTextIfExists(cfg.paths.analysis),
       compare: readTextIfExists(cfg.paths.compare),
       trainYaml: cfg.trainConfig,
+      lfPredict: cfg.paths.lfPredict,
       trainKnobs: parseTrainYaml(yamlText),
     });
   });

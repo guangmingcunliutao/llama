@@ -190,7 +190,7 @@ backend:
 `,
   analyze: `analyze — 读评估预测目录，给出下一轮训练超参（不加载模型）
 
-默认 --dir 为 outputs/lf-predict（评估页 LlamaFactory predict 写出）。
+默认 --dir 为当前评估实验的 lf-predict（outputs/eval/<id>/lf-predict）。
 读 predict_results.json / all_results.json / generated_predictions.jsonl
 （也可以是 trainer_state.json 的 eval_loss）。不调推理、不算 seen/unseen/keep。
 写出 reports/analysis.md，并在该目录旁再写一份 analysis.md。

@@ -295,6 +295,8 @@ export function summarizeRun(outDir: string, meta: RunMeta): RunSummary {
     resumeHint,
     dataRunId: live.dataRunId ?? null,
     trainRunId: live.trainRunId ?? null,
+    yamlPath: live.kind === "train" ? trainRunPaths(outDir, live.id).yaml : undefined,
+    lfPredict: live.kind === "eval" ? evalRunPaths(outDir, live.id).lfPredict : undefined,
   };
 }
 

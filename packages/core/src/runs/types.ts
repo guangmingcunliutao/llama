@@ -130,4 +130,6 @@ export interface RunSummary {
   resumeHint?: string;
   dataRunId?: string | null;
   trainRunId?: string | null;
+  yamlPath?: string;
+  lfPredict?: string;
 }

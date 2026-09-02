@@ -523,7 +523,7 @@ export function analyze(cfg: ResolvedConfig, flags: AnalyzeFlags = {}): RunRecor
   const outputDir = resolveOutputDir(cfg, flags);
   if (!outputDir) {
     throw new Error(
-      "请用 --dir 指向评估写出的预测目录（默认 outputs/lf-predict，内含 predict_results.json 或 generated_predictions.jsonl）。不要填 outputs/train。",
+      "请用 --dir 指向评估实验的预测目录（默认 outputs/eval/<id>/lf-predict）。不要填 outputs/train。",
     );
   }
 
