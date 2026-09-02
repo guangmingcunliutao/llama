@@ -25,6 +25,17 @@ export { normalizeRow, normalizeRows, readDatasetRows, pairKeyForRow, toLfShareG
 export { infer } from "./infer.js";
 export { evaluate, evaluateAll, ruleBaselineAll } from "./evaluate.js";
 export { analyze } from "./analyze.js";
+export {
+  applyModelHubEnv,
+  inferModelHub,
+  listFsDir,
+  listFsRoots,
+  looksLikeHfModelDir,
+  looksLikeLocalModelPath,
+  parseModelHub,
+  validateModelSource,
+} from "./modelSource.js";
+export type { ModelHub } from "./modelSource.js";
 export { parseTrainYaml } from "./trainYaml.js";
 export { exportLf } from "./exportLf.js";
 export type {

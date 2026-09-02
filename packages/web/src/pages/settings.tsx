@@ -30,6 +30,8 @@ export default function SettingsPage() {
           lfDatasetDir: (cfg.llamafactory as { datasetDir?: string } | undefined)?.datasetDir ?? "./outputs/lf",
           lfHome: (cfg.llamafactory as { home?: string } | undefined)?.home ?? "",
           lfBin: (cfg.llamafactory as { bin?: string } | undefined)?.bin ?? "",
+          lfHub: (cfg.llamafactory as { hub?: string } | undefined)?.hub ?? "modelscope",
+          hfEndpoint: (cfg.llamafactory as { hfEndpoint?: string } | undefined)?.hfEndpoint ?? "",
         });
       });
   }, [form]);
@@ -53,6 +55,8 @@ export default function SettingsPage() {
         datasetDir: values.lfDatasetDir,
         home: values.lfHome,
         bin: values.lfBin,
+        hub: values.lfHub,
+        hfEndpoint: values.hfEndpoint,
       },
     };
     const res = await fetch("/api/config", {
@@ -112,6 +116,19 @@ export default function SettingsPage() {
             <Input placeholder="例如 D:\LLaMA-Factory" />
           </Form.Item>
           <Form.Item name="lfBin" label="llamafactory-cli（可选）">
+            <Input />
+          </Form.Item>
+          <Form.Item name="lfHub" label="默认线上模型源">
+            <Select
+              options={[
+                { value: "modelscope", label: "ModelScope 魔搭" },
+                { value: "huggingface", label: "Hugging Face" },
+                { value: "openmind", label: "魔乐 Modelers" },
+                { value: "local", label: "本地目录" },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item name="hfEndpoint" label="Hugging Face 镜像" extra="仅 hub 为 Hugging Face 时使用，例如 https://hf-mirror.com">
             <Input />
           </Form.Item>
         </Form>

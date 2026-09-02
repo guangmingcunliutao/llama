@@ -17,6 +17,13 @@ import { diffPairSets, fingerprintPairs } from "../seedFingerprint.js";
 import { leaksIntoTrain, normalizeSentence } from "../sentenceNorm.js";
 import { goodSentence, htmlToText, splitSentences } from "../text.js";
 import { decodeSubprocessBuffer, detectLlamaFactory } from "../llamaFactoryEnv.js";
+import {
+  applyModelHubEnv,
+  inferModelHub,
+  listFsDir,
+  parseModelHub,
+  validateModelSource,
+} from "../modelSource.js";
 import { ensureTrainYaml, startTrainFromConfig, writeDatasetInfo } from "../trainJob.js";
 import { parseTrainYaml, patchTrainYaml } from "../trainYaml.js";
 import { isRecord } from "../util.js";
@@ -140,6 +147,15 @@ describe("train yaml", () => {
     expect(knobs.lora_rank).toBe(8);
     const next = patchTrainYaml(raw, { lora_rank: 16 });
     expect(next).toContain("lora_rank: 16");
+  });
+
+  it("quotes windows model paths and parses them back", () => {
+    const file = "E:\\models\\Qwen2.5-0.5B-Instruct";
+    const next = patchTrainYaml("model_name_or_path: Qwen/Qwen2.5-0.5B-Instruct\n", {
+      model_name_or_path: file,
+    });
+    expect(next).toContain("model_name_or_path: ");
+    expect(parseTrainYaml(next).model_name_or_path).toBe(file);
   });
 });
 
@@ -392,6 +408,45 @@ describe("jsonl helpers", () => {
     const json = path.join(dir, "b.json");
     fs.writeFileSync(json, JSON.stringify([{ x: 1 }, { x: 2 }]), "utf8");
     expect(readJsonOrJsonl(json)).toHaveLength(2);
+  });
+});
+
+describe("model source", () => {
+  it("parses hub aliases", () => {
+    expect(parseModelHub("ms")).toBe("modelscope");
+    expect(parseModelHub("hf")).toBe("huggingface");
+    expect(parseModelHub("modelers")).toBe("openmind");
+    expect(inferModelHub("Qwen/Qwen2.5-0.5B-Instruct")).toBe("modelscope");
+    expect(inferModelHub("E:\\\\models\\\\qwen", "huggingface")).toBe("local");
+  });
+
+  it("rejects a missing local directory", () => {
+    const err = validateModelSource({
+      root: os.tmpdir(),
+      model: path.join(os.tmpdir(), "mt-no-model-dir"),
+      hub: "local",
+    });
+    expect(err).toMatch(/不存在/);
+  });
+
+  it("accepts an online repo id and sets hub env", () => {
+    expect(validateModelSource({ root: os.tmpdir(), model: "Qwen/Qwen2.5-0.5B-Instruct", hub: "modelscope" })).toBeNull();
+    const env = applyModelHubEnv(
+      { USE_OPENMIND_HUB: "1", PATH: "/usr/bin" },
+      { hub: "modelscope", cacheDir: "/data/.cache/models" },
+    );
+    expect(env.USE_MODELSCOPE_HUB).toBe("1");
+    expect(env.USE_OPENMIND_HUB).toBeUndefined();
+    expect(env.MODELSCOPE_CACHE).toBe("/data/.cache/models");
+  });
+
+  it("lists directories and flags hf model folders", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mt-fs-"));
+    const model = path.join(dir, "qwen");
+    fs.mkdirSync(model);
+    fs.writeFileSync(path.join(model, "config.json"), "{}\n", "utf8");
+    const listing = listFsDir(dir);
+    expect(listing.entries.some((item) => item.kind === "model" && item.name === "qwen")).toBe(true);
   });
 });
 

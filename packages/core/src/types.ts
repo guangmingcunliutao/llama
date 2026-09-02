@@ -4,6 +4,7 @@
  * 工作区 `model-training.config.ts` 应对齐 {@link UserConfig}。
  * 加载后的规范化结果是 {@link ResolvedConfig}，命令实现只依赖后者。
  */
+import type { ModelHub } from "./modelSource.js";
 
 /** 字典中的一条错误词 / 正确词。 */
 export interface TermPair {
@@ -252,6 +253,12 @@ export interface UserConfig {
     datasetDir?: string;
     datasetInfo?: string;
     prefix?: string;
+    /** 基座模型来源：local / huggingface / modelscope / openmind */
+    hub?: string;
+    /** Hugging Face 镜像，如 https://hf-mirror.com */
+    hfEndpoint?: string;
+    /** 线上模型下载缓存（建议与仓库同盘） */
+    modelCacheDir?: string;
   };
   lfDatasetDir?: string | null;
   lfDatasetInfo?: string;
@@ -350,6 +357,9 @@ export interface ResolvedConfig {
   lfPrefix: string;
   lfHome: string | null;
   lfBin: string | null;
+  lfHub: ModelHub;
+  lfHfEndpoint: string | null;
+  lfModelCacheDir: string | null;
   paths: OutputPaths;
 }
 

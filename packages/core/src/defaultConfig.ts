@@ -21,6 +21,8 @@ export function defaultUserConfig(): UserConfig {
       datasetDir: "./outputs/lf",
       prefix: "term",
       home: "",
+      hub: "modelscope",
+      hfEndpoint: "",
     },
     sources: [
       {

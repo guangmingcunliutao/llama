@@ -109,6 +109,7 @@ export function JobProvider({ children }: { children: ReactNode }) {
         setSnapshot(next);
         return next;
       }
+      setSnapshot(next);
       return refresh();
     },
     [message, refresh],

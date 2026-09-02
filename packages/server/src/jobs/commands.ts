@@ -18,8 +18,9 @@ import {
   locateInstallScript,
   looksLikeLlamaFactoryHome,
   startTrainFromConfig,
+  validateModelSource,
 } from "@model-training/core";
-import { asFlag, asStringList } from "../api/envelope.js";
+import { asFlag, asStringList, isJsonObject } from "../api/envelope.js";
 import { persistGeneratePatch, persistLlamaFactory, trainPatch, type AppContext } from "../appContext.js";
 import type { JobCommand } from "./types.js";
 
@@ -79,6 +80,16 @@ const trainCommand: JobCommand = {
       return detect.errors.join("\n");
     }
     persistLlamaFactory(app, body);
+    const knobs = isJsonObject(body.knobs) ? body.knobs : {};
+    const model = typeof knobs.model_name_or_path === "string" ? knobs.model_name_or_path : "";
+    if (model) {
+      const invalid = validateModelSource({
+        root: cfg.root,
+        model,
+        hub: asFlag(body.hub),
+      });
+      if (invalid) return invalid;
+    }
     return null;
   },
   async execute(app, job, body) {
@@ -90,6 +101,8 @@ const trainCommand: JobCommand = {
       patch: trainPatch(body),
       home: asFlag(body.home) ?? latest.lfHome,
       bin: asFlag(body.bin) ?? latest.lfBin ?? undefined,
+      hub: asFlag(body.hub) ?? latest.lfHub,
+      hfEndpoint: asFlag(body.hfEndpoint) ?? latest.lfHfEndpoint,
     });
     if (result.cancelled) return;
     if (result.code !== 0) throw new Error(`llamafactory-cli 退出码 ${result.code}`);

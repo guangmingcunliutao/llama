@@ -7,7 +7,15 @@ import {
   trainChildEnv,
   trainSpawnSpec,
 } from "./llamaFactoryEnv.js";
-import { patchTrainYaml } from "./trainYaml.js";
+import {
+  applyModelHubEnv,
+  inferModelHub,
+  parseModelHub,
+  resolvedModelNameOrPath,
+  validateModelSource,
+  type ModelHub,
+} from "./modelSource.js";
+import { patchTrainYaml, parseTrainYaml } from "./trainYaml.js";
 import type { ResolvedConfig } from "./types.js";
 
 export interface TrainRunOptions {
@@ -16,6 +24,9 @@ export interface TrainRunOptions {
   home?: string | null;
   bin?: string;
   extraArgs?: string[];
+  hub?: ModelHub | null;
+  hfEndpoint?: string | null;
+  modelCacheDir?: string | null;
   signal?: AbortSignal;
   onLog?: (line: string) => void;
 }
@@ -110,12 +121,24 @@ export function runTrain(opts: TrainRunOptions): Promise<{ code: number; cancell
   const spec = trainSpawnSpec(detect, opts.yamlPath);
   const extra = opts.extraArgs ?? [];
   const args = [...spec.args, ...extra];
+  const hub = opts.hub ?? "modelscope";
+  if (hub === "modelscope") opts.onLog?.("[model] 线上源：ModelScope");
+  if (hub === "huggingface") opts.onLog?.("[model] 线上源：Hugging Face");
+  if (hub === "openmind") opts.onLog?.("[model] 线上源：魔乐 Modelers");
+  if (hub === "local") opts.onLog?.("[model] 使用本地模型目录");
   opts.onLog?.(`$ ${spec.command} ${args.join(" ")}`);
 
   return new Promise((resolve, reject) => {
     const child = spawn(spec.command, args, {
       cwd: opts.cwd,
-      env: trainChildEnv(detect),
+      env: applyModelHubEnv(
+        trainChildEnv(detect),
+        {
+          hub,
+          hfEndpoint: opts.hfEndpoint,
+          cacheDir: opts.modelCacheDir,
+        },
+      ),
       shell: spec.shell,
       windowsHide: true,
     });
@@ -143,6 +166,9 @@ export interface StartTrainOptions {
   signal?: AbortSignal;
   home?: string | null;
   bin?: string;
+  hub?: ModelHub | string | null;
+  hfEndpoint?: string | null;
+  modelCacheDir?: string | null;
   patch?: Record<string, string | number | boolean>;
 }
 
@@ -176,13 +202,28 @@ export async function startTrainFromConfig(
   if (!detect.ok) {
     throw new Error(detect.errors.join("\n"));
   }
-  const { yamlPath } = prepareTrainFiles(cfg, opts.patch);
+  const patch = { ...(opts.patch ?? {}) };
+  const modelRaw = typeof patch.model_name_or_path === "string" ? patch.model_name_or_path : "";
+  const requestedHub = parseModelHub(opts.hub) ?? cfg.lfHub;
+  if (modelRaw) {
+    const hubForPath = inferModelHub(modelRaw, requestedHub);
+    patch.model_name_or_path = resolvedModelNameOrPath({ root: cfg.root, model: modelRaw, hub: hubForPath });
+  }
+  const { yamlPath } = prepareTrainFiles(cfg, patch);
+  const knobs = parseTrainYaml(fs.readFileSync(yamlPath, "utf8"));
+  const model = String(knobs.model_name_or_path ?? "");
+  const hub = inferModelHub(model, requestedHub);
+  const invalid = validateModelSource({ root: cfg.root, model, hub });
+  if (invalid) throw new Error(invalid);
   for (const note of detect.notes) opts.onLog?.(note);
   return runTrain({
     yamlPath,
     cwd: cfg.root,
     home,
     bin,
+    hub,
+    hfEndpoint: opts.hfEndpoint ?? cfg.lfHfEndpoint,
+    modelCacheDir: opts.modelCacheDir ?? cfg.lfModelCacheDir,
     signal: opts.signal,
     onLog: opts.onLog,
   });

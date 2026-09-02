@@ -11,6 +11,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { applyLegacyPeopleOptions, PEOPLE_SEARCH_HTTP } from "./sources/peopleDefaults.js";
 import { sourceDisplay } from "./sources/display.js";
 import { parseFormats } from "./format.js";
+import { parseModelHub } from "./modelSource.js";
 import type {
   HttpSourceOptions,
   InferConfig,
@@ -316,6 +317,10 @@ export async function loadUserConfig(opts: LoadUserConfigOptions): Promise<Resol
   const lfBin =
     resolveFrom(root, cfg.llamafactory?.bin) ||
     resolveFrom(root, process.env.LLAMAFACTORY_BIN || null);
+  const lfHub = parseModelHub(cfg.llamafactory?.hub) ?? "modelscope";
+  const lfHfEndpoint = (cfg.llamafactory?.hfEndpoint ?? "").trim() || null;
+  const lfModelCacheDir =
+    resolveFrom(root, cfg.llamafactory?.modelCacheDir) || path.join(root, ".cache", "models");
   const infer: InferConfig = cfg.infer ?? { backend: "rule" };
   const split: ResolvedConfig["split"] = {
     unseenPairRatio: cfg.split?.unseenPairRatio ?? 0.1,
@@ -359,6 +364,9 @@ export async function loadUserConfig(opts: LoadUserConfigOptions): Promise<Resol
     lfPrefix,
     lfHome,
     lfBin,
+    lfHub,
+    lfHfEndpoint,
+    lfModelCacheDir,
     paths: {
       dict,
       sft: path.join(outDir, "sft", "train.jsonl"),

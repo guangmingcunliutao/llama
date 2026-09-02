@@ -5,6 +5,7 @@
 import type { FastifyInstance } from "fastify";
 import configRoute from "./config.js";
 import datasetsRoute from "./datasets.js";
+import fsRoute from "./fs.js";
 import healthRoute from "./health.js";
 import jobsRoute from "./jobs.js";
 import providersRoute from "./providers.js";
@@ -18,6 +19,7 @@ const PLUGINS = [
   configRoute,
   providersRoute,
   datasetsRoute,
+  fsRoute,
   uploadSeedRoute,
   jobsRoute,
   reportsRoute,

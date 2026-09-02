@@ -25,7 +25,7 @@ export function ConfirmDangerButton({
       disabled={disabled}
       onConfirm={() => void onConfirm()}
     >
-      <Button danger disabled={disabled}>
+      <Button danger htmlType="button" disabled={disabled}>
         {label}
       </Button>
     </Popconfirm>

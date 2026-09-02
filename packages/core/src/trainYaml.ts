@@ -34,10 +34,14 @@ function coerce(raw: string): string | number | boolean | null {
   if (value === "true") return true;
   if (value === "false") return false;
   if (/^[+-]?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(value)) return Number(value);
-  if (
-    (value.startsWith('"') && value.endsWith('"')) ||
-    (value.startsWith("'") && value.endsWith("'"))
-  ) {
+  if (value.startsWith('"') && value.endsWith('"')) {
+    try {
+      return JSON.parse(value) as string;
+    } catch {
+      return value.slice(1, -1);
+    }
+  }
+  if (value.startsWith("'") && value.endsWith("'")) {
     return value.slice(1, -1);
   }
   return value;
@@ -63,6 +67,9 @@ export function yamlScalar(value: string | number | boolean | null): string {
       return value.toExponential(1);
     }
     return String(value);
+  }
+  if (/[:#{}[\],&*?|<>=!%@`'\\\s]/.test(value) || value === "") {
+    return JSON.stringify(value);
   }
   return value;
 }

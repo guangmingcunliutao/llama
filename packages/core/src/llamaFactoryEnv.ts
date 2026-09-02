@@ -209,12 +209,16 @@ export function detectLlamaFactory(opts: { home?: string | null; bin?: string | 
   return { ok: false, home, python, bin, mode: null, errors, notes };
 }
 
-export function trainChildEnv(detect: LlamaFactoryDetect): NodeJS.ProcessEnv {
+export function trainChildEnv(
+  detect: LlamaFactoryDetect,
+  extra?: NodeJS.ProcessEnv,
+): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     PYTHONUTF8: "1",
     PYTHONIOENCODING: "utf-8",
     PYTHONLEGACYWINDOWSSTDIO: "0",
+    ...extra,
   };
   if (detect.home && existsDir(path.join(detect.home, "src", "llamafactory"))) {
     env.PYTHONPATH = path.join(detect.home, "src");

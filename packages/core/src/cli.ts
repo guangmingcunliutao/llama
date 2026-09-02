@@ -100,6 +100,9 @@ const HELP: Record<string, string> = {
   --train-config <yaml>   覆盖配置 train.config
   --lf-home <dir>         LlamaFactory 仓库或安装根（含 src/llamafactory 或 .venv）
   --lf-bin <file>         直接指定 llamafactory-cli
+  --base-model <id|path>  基座模型：本地目录或线上仓库 ID
+  --hub <name>            local / huggingface / modelscope / openmind（魔乐）
+  --hf-endpoint <url>     Hugging Face 镜像，例如 https://hf-mirror.com
 `,
   import: `import — 从外部语料导入为 alpaca 句对（sft/train.jsonl）
 
@@ -331,6 +334,9 @@ export async function main(argv: string[]): Promise<number> {
       "train-config": { type: "string" },
       "lf-home": { type: "string" },
       "lf-bin": { type: "string" },
+      "base-model": { type: "string" },
+      hub: { type: "string" },
+      "hf-endpoint": { type: "string" },
       dir: { type: "string" },
       note: { type: "string" },
       name: { type: "string" },
@@ -395,6 +401,7 @@ export async function main(argv: string[]): Promise<number> {
     const resolved = yaml
       ? { ...cfg, trainConfig: path.isAbsolute(yaml) ? yaml : path.resolve(cfg.root, yaml) }
       : cfg;
+    const baseModel = values["base-model"];
     const code = await startTrainFromConfig(resolved, {
       onLog: (line) => console.log(line),
       home: values["lf-home"]
@@ -403,6 +410,9 @@ export async function main(argv: string[]): Promise<number> {
           : path.resolve(cfg.root, values["lf-home"])
         : undefined,
       bin: values["lf-bin"],
+      hub: values.hub,
+      hfEndpoint: values["hf-endpoint"],
+      patch: baseModel ? { model_name_or_path: baseModel } : undefined,
     });
     return code.cancelled ? 130 : code.code;
   }

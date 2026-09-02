@@ -196,12 +196,14 @@ describe("persistLlamaFactory", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mt-lf-cfg-"));
     const ctx = fakeApp(dir);
     ctx.writeConfigFile({ llamafactory: { datasetDir: "./outputs/lf" } });
-    persistLlamaFactory(ctx, { home: "D:/LLaMA-Factory", bin: "" });
+    persistLlamaFactory(ctx, { home: "D:/LLaMA-Factory", bin: "", hub: "huggingface", hfEndpoint: "https://hf-mirror.com" });
     const next = ctx.readConfigFile();
-    const lf = next.llamafactory as { home: string; bin: string; datasetDir: string };
+    const lf = next.llamafactory as { home: string; bin: string; datasetDir: string; hub: string; hfEndpoint: string };
     expect(lf.home).toBe("D:/LLaMA-Factory");
     expect(lf.bin).toBe("");
     expect(lf.datasetDir).toBe("./outputs/lf");
+    expect(lf.hub).toBe("huggingface");
+    expect(lf.hfEndpoint).toBe("https://hf-mirror.com");
   });
 });
 

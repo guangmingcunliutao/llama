@@ -91,12 +91,16 @@ export function persistGeneratePatch(ctx: AppContext, body: Record<string, unkno
 export function persistLlamaFactory(ctx: AppContext, body: Record<string, unknown>): void {
   const home = typeof body.home === "string" ? body.home.trim() : undefined;
   const bin = typeof body.bin === "string" ? body.bin.trim() : undefined;
-  if (home === undefined && bin === undefined) return;
+  const hub = typeof body.hub === "string" ? body.hub.trim() : undefined;
+  const hfEndpoint = typeof body.hfEndpoint === "string" ? body.hfEndpoint.trim() : undefined;
+  if (home === undefined && bin === undefined && hub === undefined && hfEndpoint === undefined) return;
   const raw = ctx.readConfigFile();
   const prev = isJsonObject(raw.llamafactory) ? raw.llamafactory : {};
   const llamafactory: Record<string, unknown> = { ...prev };
   if (home !== undefined) llamafactory.home = home;
   if (bin !== undefined) llamafactory.bin = bin;
+  if (hub !== undefined) llamafactory.hub = hub;
+  if (hfEndpoint !== undefined) llamafactory.hfEndpoint = hfEndpoint;
   ctx.writeConfigFile({ ...raw, llamafactory });
 }
 
