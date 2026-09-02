@@ -12,7 +12,8 @@ export type JobName =
   | "infer"
   | "evaluate"
   | "analyze"
-  | "lf-install";
+  | "lf-install"
+  | "quant";
 
 export interface JobCommand {
   readonly name: JobName;

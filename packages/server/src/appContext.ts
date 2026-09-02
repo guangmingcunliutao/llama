@@ -118,6 +118,26 @@ export function persistLlamaFactory(ctx: AppContext, body: Record<string, unknow
   ctx.writeConfigFile({ ...raw, llamafactory });
 }
 
+export function persistQuant(ctx: AppContext, body: Record<string, unknown>): void {
+  const llamaHomeRaw =
+    typeof body.llamaHome === "string"
+      ? body.llamaHome.trim()
+      : typeof body.llamaQuantize === "string"
+        ? body.llamaQuantize.trim()
+        : undefined;
+  const convertScript = typeof body.convertScript === "string" ? body.convertScript.trim() : undefined;
+  if (llamaHomeRaw === undefined && convertScript === undefined) return;
+  const raw = ctx.readConfigFile();
+  const prev = isJsonObject(raw.quant) ? raw.quant : {};
+  const quant: Record<string, unknown> = { ...prev };
+  if (llamaHomeRaw !== undefined) {
+    quant.llamaHome = llamaHomeRaw;
+    quant.llamaQuantize = llamaHomeRaw;
+  }
+  if (convertScript !== undefined) quant.convertScript = convertScript;
+  ctx.writeConfigFile({ ...raw, quant });
+}
+
 export function trainPatch(body: Record<string, unknown>): Record<string, string | number | boolean> | undefined {
   if (!isJsonObject(body.knobs)) return undefined;
   const out: Record<string, string | number | boolean> = {};

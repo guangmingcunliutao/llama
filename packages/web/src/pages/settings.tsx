@@ -29,6 +29,10 @@ export default function SettingsPage() {
           lfHub: (cfg.llamafactory as { hub?: string } | undefined)?.hub ?? "modelscope",
           lfModel: (cfg.llamafactory as { model?: string } | undefined)?.model ?? "",
           hfEndpoint: (cfg.llamafactory as { hfEndpoint?: string } | undefined)?.hfEndpoint ?? "",
+          llamaHome: (cfg.quant as { llamaHome?: string; llamaQuantize?: string } | undefined)?.llamaHome
+            ?? (cfg.quant as { llamaQuantize?: string } | undefined)?.llamaQuantize
+            ?? "",
+          convertScript: (cfg.quant as { convertScript?: string } | undefined)?.convertScript ?? "",
         });
       });
   }, [form]);
@@ -53,6 +57,12 @@ export default function SettingsPage() {
         hub: values.lfHub,
         model: values.lfModel,
         hfEndpoint: values.hfEndpoint,
+      },
+      quant: {
+        ...((current.data?.quant as object) ?? {}),
+        llamaHome: values.llamaHome,
+        llamaQuantize: values.llamaHome,
+        convertScript: values.convertScript,
       },
     };
     const res = await fetch("/api/config", {
@@ -122,6 +132,20 @@ export default function SettingsPage() {
             extra="本地目录或仓库 ID。训练页填过一次后会记在这里，下次自动带出。"
           >
             <Input placeholder="例如 E:\models\Qwen2.5-0.5B-Instruct 或 Qwen/Qwen3-0.6B" />
+          </Form.Item>
+          <Form.Item
+            name="llamaHome"
+            label="llama.cpp 工具目录"
+            extra="拷到新电脑后改这一项。目录里要有 llama-quantize（运行包、Llama.app 或编译产物）。不要填聊天用的 llama.exe。"
+          >
+            <Input placeholder="例如 D:\tools\llama-b10665-bin-win-cpu-x64 或 Llama.app" />
+          </Form.Item>
+          <Form.Item
+            name="convertScript"
+            label="convert_hf_to_gguf.py（可选）"
+            extra="量化已有 GGUF 不需要。HF 目录需要该脚本；Windows 官方 zip 通常没有，把 llama.cpp 源码放在工具目录旁或在此填写。"
+          >
+            <Input placeholder="可留空" />
           </Form.Item>
           <Form.Item name="hfEndpoint" label="Hugging Face 镜像" extra="仅 hub 为 Hugging Face 时使用，例如 https://hf-mirror.com">
             <Input />

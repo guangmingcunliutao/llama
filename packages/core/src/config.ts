@@ -12,6 +12,7 @@ import { applyLegacyPeopleOptions, PEOPLE_SEARCH_HTTP } from "./sources/peopleDe
 import { sourceDisplay } from "./sources/display.js";
 import { parseFormats } from "./format.js";
 import { parseModelHub } from "./modelSource.js";
+import { findConvertNear, resolveConvertScript, resolveLlamaQuantize } from "./quant.js";
 import type {
   HttpSourceOptions,
   InferConfig,
@@ -335,6 +336,11 @@ export async function loadUserConfig(opts: LoadUserConfigOptions): Promise<Resol
   const lfHfEndpoint = (cfg.llamafactory?.hfEndpoint ?? "").trim() || null;
   const lfModelCacheDir =
     resolveFrom(root, cfg.llamafactory?.modelCacheDir) || path.join(root, ".cache", "models");
+  const quantHome =
+    resolveFrom(root, cfg.quant?.llamaHome) || resolveFrom(root, cfg.quant?.llamaQuantize);
+  const quantBin = resolveLlamaQuantize(quantHome);
+  const quantConvertScript =
+    resolveConvertScript(cfg.quant?.convertScript) || findConvertNear(quantHome);
   const infer: InferConfig = cfg.infer ?? { backend: "llamafactory" };
   const split: ResolvedConfig["split"] = {
     unseenPairRatio: cfg.split?.unseenPairRatio ?? 0.1,
@@ -382,6 +388,9 @@ export async function loadUserConfig(opts: LoadUserConfigOptions): Promise<Resol
     lfModel,
     lfHfEndpoint,
     lfModelCacheDir,
+    quantHome,
+    quantBin,
+    quantConvertScript,
     paths: {
       dict,
       sft: dataP.train,

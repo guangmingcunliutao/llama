@@ -7,6 +7,7 @@ import {
   analyze,
   createRun,
   detectLlamaFactory,
+  detectQuantTools,
   evaluate,
   findBash,
   findGit,
@@ -20,13 +21,14 @@ import {
   locateInstallScript,
   looksLikeLlamaFactoryHome,
   patchWorkspace,
+  quantizeSource,
   requireDataRun,
   startTrainFromConfig,
   trainRunPaths,
   validateModelSource,
 } from "@model-training/core";
 import { asFlag, asStringList, isJsonObject } from "../api/envelope.js";
-import { persistGeneratePatch, persistLlamaFactory, trainPatch, type AppContext } from "../appContext.js";
+import { persistGeneratePatch, persistLlamaFactory, persistQuant, trainPatch, type AppContext } from "../appContext.js";
 import type { JobCommand } from "./types.js";
 
 const generateCommand: JobCommand = {
@@ -251,6 +253,52 @@ const analyzeCommand: JobCommand = {
   },
 };
 
+const quantCommand: JobCommand = {
+  name: "quant",
+  async validate(app, body) {
+    const source = asFlag(body.source)?.trim();
+    if (!source) return "请填写源模型路径（GGUF 或合并后的 HuggingFace 目录）";
+    const cfg = await loadUserConfig({ command: "quant", cwd: app.dataRoot() });
+    const tools = detectQuantTools({
+      llamaHome: asFlag(body.llamaHome) ?? asFlag(body.llamaQuantize) ?? cfg.quantHome,
+      llamaQuantize: cfg.quantBin,
+      convertScript: asFlag(body.convertScript) ?? cfg.quantConvertScript,
+      lfHome: cfg.lfHome,
+    });
+    if (!tools.ok) return tools.notes.join("\n");
+    persistQuant(app, {
+      llamaHome: asFlag(body.llamaHome) ?? asFlag(body.llamaQuantize),
+      convertScript: asFlag(body.convertScript),
+    });
+    return null;
+  },
+  async execute(app, job, body) {
+    persistQuant(app, {
+      llamaHome: asFlag(body.llamaHome) ?? asFlag(body.llamaQuantize),
+      convertScript: asFlag(body.convertScript),
+    });
+    const latest = await loadUserConfig({ command: "quant", cwd: app.dataRoot() });
+    const formats = [
+      ...(asStringList(body.formats) ?? []),
+      ...(asFlag(body.custom)?.split(/[,，\s]+/) ?? []),
+    ].filter(Boolean);
+    await quantizeSource(latest, {
+      source: asFlag(body.source) ?? "",
+      formats,
+      dtype: asFlag(body.dtype) ?? "f16",
+      requant: body.requant === true,
+      keepMid: body.keepMid === true,
+      llamaHome: asFlag(body.llamaHome) ?? asFlag(body.llamaQuantize) ?? latest.quantHome,
+      llamaQuantize: latest.quantBin,
+      convertScript: asFlag(body.convertScript) ?? latest.quantConvertScript,
+      outDir: asFlag(body.outDir),
+      trainRunId: asFlag(body.trainRunId),
+      signal: job.signal,
+      onLog: job.onLog,
+    });
+  },
+};
+
 function resolveInstallHome(root: string, home: string): string {
   return path.isAbsolute(home) ? path.resolve(home) : path.resolve(root, home);
 }
@@ -309,5 +357,6 @@ export const JOB_COMMANDS: JobCommand[] = [
   inferCommand,
   evaluateCommand,
   analyzeCommand,
+  quantCommand,
   lfInstallCommand,
 ];

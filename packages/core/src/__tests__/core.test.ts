@@ -16,7 +16,7 @@ import { countJsonl, readJsonl, readJsonOrJsonl } from "../jsonl.js";
 import { diffPairSets, fingerprintPairs } from "../seedFingerprint.js";
 import { leaksIntoTrain, normalizeSentence } from "../sentenceNorm.js";
 import { goodSentence, htmlToText, splitSentences } from "../text.js";
-import { decodeSubprocessBuffer, detectLlamaFactory } from "../llamaFactoryEnv.js";
+import { decodeSubprocessBuffer, detectLlamaFactory, findSystemPython } from "../llamaFactoryEnv.js";
 import {
   applyModelHubEnv,
   inferModelHub,
@@ -26,6 +26,7 @@ import {
 } from "../modelSource.js";
 import { ensureTrainYaml, startTrainFromConfig, writeDatasetInfo } from "../trainJob.js";
 import { parseTrainYaml, patchTrainYaml } from "../trainYaml.js";
+import { findConvertNear, resolveLlamaQuantize } from "../quant.js";
 import { createRun, patchWorkspace, writeDataParams } from "../runs/store.js";
 import { dataRunPaths } from "../runs/paths.js";
 import { isRecord } from "../util.js";
@@ -164,6 +165,35 @@ describe("train yaml", () => {
   it("parses max_steps", () => {
     expect(parseTrainYaml("max_steps: -1\n").max_steps).toBe(-1);
     expect(parseTrainYaml("max_steps: 200\n").max_steps).toBe(200);
+  });
+});
+
+describe("quant tools", () => {
+  it("accepts llama.cpp bin folder as llama-quantize path", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mt-llama-bin-"));
+    const exe = path.join(dir, process.platform === "win32" ? "llama-quantize.exe" : "llama-quantize");
+    fs.writeFileSync(exe, "x");
+    expect(resolveLlamaQuantize(dir)).toBe(exe);
+    expect(resolveLlamaQuantize(exe)).toBe(exe);
+    expect(resolveLlamaQuantize(path.join(dir, "missing"))).toBeNull();
+  });
+
+  it("finds llama-quantize under bin/ and convert script beside the tool dir", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mt-llama-home-"));
+    const pack = path.join(root, "Llama.app");
+    fs.mkdirSync(path.join(pack, "bin"), { recursive: true });
+    const exe = path.join(pack, "bin", process.platform === "win32" ? "llama-quantize.exe" : "llama-quantize");
+    fs.writeFileSync(exe, "x");
+    const script = path.join(root, "llama.cpp", "convert_hf_to_gguf.py");
+    fs.mkdirSync(path.dirname(script), { recursive: true });
+    fs.writeFileSync(script, "#");
+    expect(resolveLlamaQuantize(pack)).toBe(exe);
+    expect(findConvertNear(pack)).toBe(script);
+  });
+
+  it("skips Microsoft Store python stubs", () => {
+    const python = findSystemPython();
+    if (python) expect(python.toLowerCase()).not.toContain("windowsapps");
   });
 });
 

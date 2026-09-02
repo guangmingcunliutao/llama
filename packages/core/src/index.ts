@@ -59,7 +59,8 @@ export {
 } from "./modelSource.js";
 export type { ModelHub } from "./modelSource.js";
 export { parseTrainYaml } from "./trainYaml.js";
-export { exportLf } from "./exportLf.js";
+export { detectQuantTools, findConvertNear, quantizeSource, resolveConvertScript, resolveLlamaQuantize } from "./quant.js";
+export type { QuantDetect, QuantizeFlags } from "./quant.js";
 export type {
   HttpSourceConfig,
   HttpSourceOptions,

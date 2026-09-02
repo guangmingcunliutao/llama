@@ -104,17 +104,37 @@ export function looksLikeLlamaFactoryHome(home: string): boolean {
   );
 }
 
-function whichOnPath(command: string): string | null {
+function whichAllOnPath(command: string): string[] {
   const finder = win() ? "where" : "which";
   const result = spawnSync(finder, [command], { encoding: "utf8", shell: false, windowsHide: true });
-  if (result.status !== 0) return null;
-  const line = (result.stdout || "")
+  if (result.status !== 0) return [];
+  return (result.stdout || "")
     .split(/\r?\n/)
     .map((item) => item.trim())
-    .find((item) => item && !item.toLowerCase().includes("info:"));
+    .filter((item) => item && !item.toLowerCase().includes("info:"));
+}
+
+function whichOnPath(command: string): string | null {
+  const lines = whichAllOnPath(command);
+  const line = command.toLowerCase().startsWith("python")
+    ? lines.find((item) => !isStorePythonStub(item)) ?? null
+    : (lines[0] ?? null);
   if (!line) return null;
-  if (command.toLowerCase().startsWith("python") && isStorePythonStub(line)) return null;
   return existsFile(line) ? line : line;
+}
+
+function probePyLauncher(): string | null {
+  if (!win()) return null;
+  const launcher = whichOnPath("py.exe") || whichOnPath("py");
+  if (!launcher) return null;
+  const result = spawnSync(launcher, ["-3", "-c", "import sys; print(sys.executable)"], {
+    encoding: "utf8",
+    timeout: 10000,
+    windowsHide: true,
+  });
+  if (result.status !== 0) return null;
+  const exe = (result.stdout || "").trim().split(/\r?\n/).find(Boolean);
+  return exe ? pickPython(exe) : null;
 }
 
 function moduleImportOk(python: string, extraPath?: string): boolean {
@@ -130,7 +150,13 @@ function moduleImportOk(python: string, extraPath?: string): boolean {
 }
 
 export function findSystemPython(): string | null {
-  return pickPython(whichOnPath("python") || whichOnPath("python3"));
+  for (const name of pythonNames()) {
+    for (const hit of whichAllOnPath(name)) {
+      const picked = pickPython(hit);
+      if (picked) return picked;
+    }
+  }
+  return probePyLauncher();
 }
 
 export function findGit(): string | null {

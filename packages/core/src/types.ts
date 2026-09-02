@@ -269,6 +269,12 @@ export interface UserConfig {
     /** 线上模型下载缓存（建议与仓库同盘） */
     modelCacheDir?: string;
   };
+  /** llama.cpp 量化工具（运行包 / Llama.app / 源码目录） */
+  quant?: {
+    llamaHome?: string;
+    llamaQuantize?: string;
+    convertScript?: string;
+  };
   lfDatasetDir?: string | null;
   lfDatasetInfo?: string;
   lfPrefix?: string;
@@ -373,6 +379,9 @@ export interface ResolvedConfig {
   lfModel: string | null;
   lfHfEndpoint: string | null;
   lfModelCacheDir: string | null;
+  quantHome: string | null;
+  quantBin: string | null;
+  quantConvertScript: string | null;
   paths: OutputPaths;
 }
 

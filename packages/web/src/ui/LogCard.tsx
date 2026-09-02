@@ -10,6 +10,7 @@ export const JOB_LABEL: Record<string, string> = {
   evaluate: "打分",
   analyze: "调参分析",
   "lf-install": "安装 LlamaFactory",
+  quant: "量化导出",
 };
 
 /**
