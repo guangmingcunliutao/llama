@@ -28,6 +28,8 @@ export default function SettingsPage() {
           trainConfig: train.config ?? "./outputs/llamafactory/train_sft.yaml",
           trainOutputDir: train.outputDir ?? "./outputs/train",
           lfDatasetDir: (cfg.llamafactory as { datasetDir?: string } | undefined)?.datasetDir ?? "./outputs/lf",
+          lfHome: (cfg.llamafactory as { home?: string } | undefined)?.home ?? "",
+          lfBin: (cfg.llamafactory as { bin?: string } | undefined)?.bin ?? "",
         });
       });
   }, [form]);
@@ -49,6 +51,8 @@ export default function SettingsPage() {
       llamafactory: {
         ...((current.data?.llamafactory as object) ?? {}),
         datasetDir: values.lfDatasetDir,
+        home: values.lfHome,
+        bin: values.lfBin,
       },
     };
     const res = await fetch("/api/config", {
@@ -102,6 +106,12 @@ export default function SettingsPage() {
             <Input />
           </Form.Item>
           <Form.Item name="lfDatasetDir" label="LlamaFactory dataset_dir">
+            <Input />
+          </Form.Item>
+          <Form.Item name="lfHome" label="LlamaFactory 目录" extra="含 src/llamafactory 或 .venv 的安装根。">
+            <Input placeholder="例如 D:\LLaMA-Factory" />
+          </Form.Item>
+          <Form.Item name="lfBin" label="llamafactory-cli（可选）">
             <Input />
           </Form.Item>
         </Form>

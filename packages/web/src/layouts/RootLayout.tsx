@@ -9,6 +9,7 @@ import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { JobProvider, useJob } from "../jobs/JobContext";
+import { JOB_LABEL } from "../ui/LogCard";
 import { sidebarItems } from "../menu/fromPages";
 import { BrandMark } from "../ui/BrandMark";
 import { AppearanceButton, ThemeProvider } from "../theme/ThemeProvider";
@@ -35,6 +36,9 @@ function Shell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { job } = useJob();
+  const runningLabel = job.running.length
+    ? job.running.map((name) => JOB_LABEL[name] ?? name).join(" · ")
+    : job.job;
   const [collapsed, setCollapsed] = useState(false);
   const selected = useMemo(() => selectedKeys(location.pathname, ITEMS), [location.pathname]);
 
@@ -80,7 +84,7 @@ function Shell({ children }: { children: ReactNode }) {
           </Space>
           <Space size={8}>
             <Tag color={job.busy ? "processing" : job.error ? "error" : "success"}>
-              {job.busy ? job.job : job.error ? "失败" : "空闲"}
+              {job.busy ? runningLabel : job.error ? "失败" : "空闲"}
             </Tag>
             <AppearanceButton />
           </Space>

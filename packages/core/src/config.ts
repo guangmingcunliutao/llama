@@ -46,6 +46,7 @@ function detectPackageRoot(): string {
   for (let i = 0; i < 6; i += 1) {
     if (fs.existsSync(path.join(dir, "templates", "model-training.config.ts"))) return dir;
     if (fs.existsSync(path.join(dir, "templates", "model-training.config.js"))) return dir;
+    if (fs.existsSync(path.join(dir, "scripts", "install-llamafactory.sh"))) return dir;
     const next = path.resolve(dir, "..");
     if (next === dir) break;
     dir = next;
@@ -309,6 +310,12 @@ export async function loadUserConfig(opts: LoadUserConfigOptions): Promise<Resol
   const lfDatasetDir = resolveFrom(root, cfg.llamafactory?.datasetDir ?? cfg.lfDatasetDir);
   const lfDatasetInfo = cfg.llamafactory?.datasetInfo ?? cfg.lfDatasetInfo ?? "dataset_info.json";
   const lfPrefix = cfg.llamafactory?.prefix ?? cfg.lfPrefix ?? "corr";
+  const lfHome =
+    resolveFrom(root, cfg.llamafactory?.home) ||
+    resolveFrom(root, process.env.LLAMAFACTORY_HOME || null);
+  const lfBin =
+    resolveFrom(root, cfg.llamafactory?.bin) ||
+    resolveFrom(root, process.env.LLAMAFACTORY_BIN || null);
   const infer: InferConfig = cfg.infer ?? { backend: "rule" };
   const split: ResolvedConfig["split"] = {
     unseenPairRatio: cfg.split?.unseenPairRatio ?? 0.1,
@@ -350,6 +357,8 @@ export async function loadUserConfig(opts: LoadUserConfigOptions): Promise<Resol
     lfDatasetDir,
     lfDatasetInfo,
     lfPrefix,
+    lfHome,
+    lfBin,
     paths: {
       dict,
       sft: path.join(outDir, "sft", "train.jsonl"),

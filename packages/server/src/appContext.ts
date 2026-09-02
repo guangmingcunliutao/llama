@@ -88,6 +88,18 @@ export function persistGeneratePatch(ctx: AppContext, body: Record<string, unkno
   ctx.writeConfigFile(next);
 }
 
+export function persistLlamaFactory(ctx: AppContext, body: Record<string, unknown>): void {
+  const home = typeof body.home === "string" ? body.home.trim() : undefined;
+  const bin = typeof body.bin === "string" ? body.bin.trim() : undefined;
+  if (home === undefined && bin === undefined) return;
+  const raw = ctx.readConfigFile();
+  const prev = isJsonObject(raw.llamafactory) ? raw.llamafactory : {};
+  const llamafactory: Record<string, unknown> = { ...prev };
+  if (home !== undefined) llamafactory.home = home;
+  if (bin !== undefined) llamafactory.bin = bin;
+  ctx.writeConfigFile({ ...raw, llamafactory });
+}
+
 export function trainPatch(body: Record<string, unknown>): Record<string, string | number | boolean> | undefined {
   if (!isJsonObject(body.knobs)) return undefined;
   const out: Record<string, string | number | boolean> = {};

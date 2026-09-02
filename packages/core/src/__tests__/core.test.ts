@@ -6,6 +6,9 @@ import { groupByCorrect, loadDictionary, mergeTermPairs } from "../dictionary.js
 import { parseFormats, toMessages, toShareGpt, wantsShareGpt } from "../format.js";
 import { generateEval } from "../generateEval.js";
 import { collectSentences } from "../generate.js";
+import { RequestRateLimiter } from "../rateLimit.js";
+import { sleep } from "../text.js";
+import { JobCancelledError } from "../abort.js";
 import { cleanSampleCount } from "../generateMix.js";
 import { interpolate } from "../interpolate.js";
 import { ExclusiveJob } from "../jobLock.js";
@@ -13,10 +16,12 @@ import { countJsonl, readJsonl, readJsonOrJsonl } from "../jsonl.js";
 import { diffPairSets, fingerprintPairs } from "../seedFingerprint.js";
 import { leaksIntoTrain, normalizeSentence } from "../sentenceNorm.js";
 import { goodSentence, htmlToText, splitSentences } from "../text.js";
+import { decodeSubprocessBuffer, detectLlamaFactory } from "../llamaFactoryEnv.js";
 import { ensureTrainYaml, startTrainFromConfig, writeDatasetInfo } from "../trainJob.js";
 import { parseTrainYaml, patchTrainYaml } from "../trainYaml.js";
 import { isRecord } from "../util.js";
 import { findRepoRoot, loadUserConfig, normalizeSources } from "../config.js";
+import { locateInstallScript } from "../llamaFactoryInstall.js";
 import { sourceDisplay } from "../sources/display.js";
 import { selectSources } from "../sources/registry.js";
 
@@ -161,15 +166,18 @@ describe("isRecord", () => {
 });
 
 describe("ExclusiveJob", () => {
-  it("rejects a second acquire until release", () => {
+  it("allows different names at the same time but not the same name twice", () => {
     const job = new ExclusiveJob();
     job.acquire("train");
     expect(job.busy).toBe(true);
-    expect(() => job.acquire("generate")).toThrow(/任务进行中/);
-    job.release("train");
-    expect(job.busy).toBe(false);
     job.acquire("generate");
-    expect(job.current).toBe("generate");
+    expect(job.running()).toEqual(["train", "generate"]);
+    expect(() => job.acquire("train")).toThrow(/任务进行中: train/);
+    job.release("train");
+    expect(job.has("generate")).toBe(true);
+    expect(job.has("train")).toBe(false);
+    job.release("generate");
+    expect(job.busy).toBe(false);
   });
 });
 
@@ -214,6 +222,56 @@ describe("train artifacts", () => {
     const cfg = await loadUserConfig({ command: "train", cwd: dir });
     await expect(startTrainFromConfig(cfg)).rejects.toThrow(/没有训练集/);
     expect(fs.existsSync(path.join(dir, "outputs", "llamafactory", "train_sft.yaml"))).toBe(false);
+  });
+
+  it("refuses to start when LlamaFactory home does not exist", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mt-nohome-"));
+    fs.mkdirSync(path.join(dir, "outputs", "sft"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "outputs", "sft", "train.jsonl"), "{}\n", "utf8");
+    fs.writeFileSync(
+      path.join(dir, "model-training.config.json"),
+      `${JSON.stringify({
+        outDir: "./outputs",
+        dict: "./dict.jsonl",
+        sources: [],
+        llamafactory: { home: "./missing-llamafactory" },
+      })}\n`,
+      "utf8",
+    );
+    const cfg = await loadUserConfig({ command: "train", cwd: dir });
+    await expect(startTrainFromConfig(cfg)).rejects.toThrow(/目录不存在/);
+  });
+});
+
+describe("job abort", () => {
+  it("interrupts sleep", async () => {
+    const ctrl = new AbortController();
+    const pending = sleep(5000, ctrl.signal);
+    ctrl.abort();
+    await expect(pending).rejects.toBeInstanceOf(JobCancelledError);
+  });
+
+  it("interrupts rate limiter wait", async () => {
+    const limiter = new RequestRateLimiter(60, 0);
+    await limiter.acquire();
+    const ctrl = new AbortController();
+    const pending = limiter.acquire("x", ctrl.signal);
+    ctrl.abort();
+    await expect(pending).rejects.toBeInstanceOf(JobCancelledError);
+  });
+});
+
+describe("llamaFactoryEnv", () => {
+  it("decodes GBK bytes that are invalid UTF-8", () => {
+    const text = decodeSubprocessBuffer(Buffer.from([0xc4, 0xe3]));
+    expect(text).toBe("你");
+  });
+
+  it("reports missing LlamaFactory directory", () => {
+    const missing = path.join(os.tmpdir(), "mt-lf-missing-" + Date.now());
+    const found = detectLlamaFactory({ home: missing, bin: null });
+    expect(found.ok).toBe(false);
+    expect(found.errors.join("\n")).toMatch(/目录不存在/);
   });
 });
 
@@ -268,6 +326,15 @@ describe("findRepoRoot", () => {
   it("walks up to pnpm-workspace.yaml", () => {
     const root = findRepoRoot(path.join(process.cwd(), "packages", "core", "src"));
     expect(fs.existsSync(path.join(root, "pnpm-workspace.yaml"))).toBe(true);
+  });
+});
+
+describe("locateInstallScript", () => {
+  it("finds the bundled LlamaFactory install script", () => {
+    const script = locateInstallScript();
+    expect(script).toBeTruthy();
+    expect(script).toMatch(/install-llamafactory\.sh$/);
+    expect(fs.readFileSync(script!, "utf8")).toContain("INSTALL_ROOT");
   });
 });
 

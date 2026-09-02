@@ -1,3 +1,4 @@
+import { throwIfAborted } from "./abort.js";
 import { sleep } from "./text.js";
 
 /**
@@ -22,7 +23,8 @@ export class RequestRateLimiter {
    * 等到满足频率后再返回。第一次调用立即放行。
    * @param label 打到日志里的说明，例如源名称和关键词
    */
-  async acquire(label?: string): Promise<void> {
+  async acquire(label?: string, signal?: AbortSignal): Promise<void> {
+    throwIfAborted(signal);
     const minInterval = 60_000 / this.requestsPerMinute;
     const jitter = this.jitterSec > 0 ? Math.random() * this.jitterSec * 1000 : 0;
     const earliest = this.lastAt === 0 ? Date.now() : this.lastAt + minInterval;
@@ -32,8 +34,9 @@ export class RequestRateLimiter {
       console.log(
         `[rate] 等待 ${(wait / 1000).toFixed(1)}s（${this.requestsPerMinute} 次/分钟）${hint}`,
       );
-      await sleep(wait);
+      await sleep(wait, signal);
     }
+    throwIfAborted(signal);
     this.lastAt = Date.now();
   }
 }

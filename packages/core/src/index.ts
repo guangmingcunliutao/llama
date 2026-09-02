@@ -13,6 +13,10 @@ export {
   startTrainFromConfig,
   writeDatasetInfo,
 } from "./trainJob.js";
+export { decodeSubprocessBuffer, detectLlamaFactory, findBash, findGit, findSystemPython, looksLikeLlamaFactoryHome, trainSpawnSpec } from "./llamaFactoryEnv.js";
+export { installLlamaFactory, locateInstallScript } from "./llamaFactoryInstall.js";
+export { isJobCancelled, JobCancelledError } from "./abort.js";
+export type { LlamaFactoryDetect } from "./llamaFactoryEnv.js";
 export { availableSourceTypes, SOURCE_TYPES } from "./sources/registry.js";
 export { sourceDisplay } from "./sources/display.js";
 export { PEOPLE_SEARCH_DISPLAY } from "./sources/peopleDefaults.js";

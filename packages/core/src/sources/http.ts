@@ -4,6 +4,7 @@
  * 不绑定任何具体网站：URL、方法、请求头、JSON 体、如何从响应里取 records，
  * 全部来自 {@link HttpSourceOptions}。可在配置里并列多条，指向不同接口。
  */
+import { abortWithTimeout, isJobCancelled, JobCancelledError, throwIfAborted } from "../abort.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -47,6 +48,7 @@ export class HttpSearchSource implements SearchSource {
     readonly name: string,
     readonly options: HttpSourceOptions,
     private readonly limiter: RequestRateLimiter,
+    private readonly signal?: AbortSignal,
   ) {
     if (!options.url) {
       throw new Error(`HTTP 源 ${name} 缺少 options.url`);
@@ -58,6 +60,7 @@ export class HttpSearchSource implements SearchSource {
     const merged: SourceDocument[] = [];
     const seen = new Set<string>();
     for (let page = 1; page <= pages; page += 1) {
+      throwIfAborted(this.signal);
       const docs = await this.searchPage(keyword, page);
       for (const doc of docs) {
         const key = doc.doc_id || doc.url || doc.text.slice(0, 80);
@@ -71,10 +74,11 @@ export class HttpSearchSource implements SearchSource {
 
   private async searchPage(keyword: string, page: number): Promise<SourceDocument[]> {
     const cacheKey = `${keyword}#${page}`;
+    throwIfAborted(this.signal);
     const cached = this.readCache(cacheKey);
     if (cached) return cached;
 
-    await this.limiter.acquire(`source=${this.name} keyword=${keyword} page=${page}`);
+    await this.limiter.acquire(`source=${this.name} keyword=${keyword} page=${page}`, this.signal);
 
     const vars = { keyword, keyword_enc: encodeURIComponent(keyword), page: String(page) };
     const method = (this.options.method ?? "POST").toUpperCase() as "GET" | "POST";
@@ -89,42 +93,48 @@ export class HttpSearchSource implements SearchSource {
     const init: RequestInit = {
       method,
       headers,
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: abortWithTimeout(timeoutMs, this.signal),
     };
     if (method === "POST") {
       init.body = JSON.stringify(body);
     }
 
-    const res = await fetch(url, init);
-    if (!res.ok) {
-      throw new Error(`${this.name} HTTP ${res.status}`);
-    }
+    try {
+      const res = await fetch(url, init);
+      throwIfAborted(this.signal);
+      if (!res.ok) {
+        throw new Error(`${this.name} HTTP ${res.status}`);
+      }
 
-    const raw: unknown = await res.json();
-    this.assertBusinessCode(raw);
+      const raw: unknown = await res.json();
+      this.assertBusinessCode(raw);
 
-    const records = this.readRecords(raw);
-    const docs: SourceDocument[] = [];
-    for (const item of records) {
-      if (!isRecord(item)) continue;
-      const html = pickField(item, asStringList(this.options.fields?.html, ["contentOriginal", "content"]));
-      const text = htmlToText(html);
-      if (!text) continue;
-      docs.push({
-        source: this.name,
-        doc_id: pickField(item, asStringList(this.options.fields?.id, ["id", "contentId", "url"])),
-        title: htmlToText(pickField(item, asStringList(this.options.fields?.title, ["title"]))),
-        url: pickField(item, asStringList(this.options.fields?.url, ["url"])),
-        text,
-        extra: {
-          origin_name: pickField(item, ["originName", "origin_name"]),
-          domain: pickField(item, ["domain"]),
-          page: String(page),
-        },
-      });
+      const records = this.readRecords(raw);
+      const docs: SourceDocument[] = [];
+      for (const item of records) {
+        if (!isRecord(item)) continue;
+        const html = pickField(item, asStringList(this.options.fields?.html, ["contentOriginal", "content"]));
+        const text = htmlToText(html);
+        if (!text) continue;
+        docs.push({
+          source: this.name,
+          doc_id: pickField(item, asStringList(this.options.fields?.id, ["id", "contentId", "url"])),
+          title: htmlToText(pickField(item, asStringList(this.options.fields?.title, ["title"]))),
+          url: pickField(item, asStringList(this.options.fields?.url, ["url"])),
+          text,
+          extra: {
+            origin_name: pickField(item, ["originName", "origin_name"]),
+            domain: pickField(item, ["domain"]),
+            page: String(page),
+          },
+        });
+      }
+      this.writeCache(cacheKey, docs);
+      return docs;
+    } catch (err) {
+      if (this.signal?.aborted || isJobCancelled(err)) throw new JobCancelledError();
+      throw err;
     }
-    this.writeCache(cacheKey, docs);
-    return docs;
   }
 
   private assertBusinessCode(raw: unknown): void {

@@ -9,7 +9,7 @@ import { PageHeader } from "../ui/PageHeader";
 export const menu = { title: "训练分析", icon: "BarChartOutlined", order: 40 };
 
 export default function AnalyzePage() {
-  const { job, start, cancel } = useJob();
+  const { job, start, cancel } = useJob("analyze");
   const [form] = Form.useForm();
   const [markdown, setMarkdown] = useState("");
 

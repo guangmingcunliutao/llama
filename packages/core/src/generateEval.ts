@@ -1,6 +1,7 @@
 /**
  * 独立生成验证集：同一套词对再检索，句子不得出现在训练集规范句中。
  */
+import { isJobCancelled, throwIfAborted } from "./abort.js";
 import fs from "node:fs";
 import path from "node:path";
 import { groupByCorrect, loadDictionary } from "./dictionary.js";
@@ -35,7 +36,12 @@ export async function generateEval(
   const limiter = new RequestRateLimiter(cfg.rate.requestsPerMinute, cfg.rate.jitterSec);
   const selected = selectSources(cfg, flags.source);
   const sources = selected.map((item) =>
-    buildSource(item, { root: cfg.root, cacheDir: cfg.cacheDir, globalLimiter: limiter }),
+    buildSource(item, {
+      root: cfg.root,
+      cacheDir: cfg.cacheDir,
+      globalLimiter: limiter,
+      signal: flags.signal,
+    }),
   );
 
   const outFile = cfg.paths.eval;
@@ -44,8 +50,10 @@ export async function generateEval(
   const evalSents: string[] = [];
 
   for (const [correct, related] of grouped) {
+    throwIfAborted(flags.signal);
     let sentences: ReturnType<typeof collectSentences> = [];
     for (const src of sources) {
+      throwIfAborted(flags.signal);
       try {
         const docs = await src.search(correct);
         sentences = collectSentences(
@@ -57,6 +65,7 @@ export async function generateEval(
         );
         if (sentences.length) break;
       } catch (err) {
+        if (isJobCancelled(err)) throw err;
         const message = err instanceof Error ? err.message : String(err);
         console.error(`[eval-fail] source=${src.name} term=${correct} ${message}`);
       }

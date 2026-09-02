@@ -5,7 +5,14 @@
 import type { AppContext } from "../appContext.js";
 import type { JobContext, JobSnapshot } from "./hub.js";
 
-export type JobName = "generate" | "generate-eval" | "train" | "infer" | "evaluate" | "analyze";
+export type JobName =
+  | "generate"
+  | "generate-eval"
+  | "train"
+  | "infer"
+  | "evaluate"
+  | "analyze"
+  | "lf-install";
 
 export interface JobCommand {
   readonly name: JobName;
@@ -22,5 +29,5 @@ export interface JobDispatchResult {
 export interface JobHub {
   snapshot(): JobSnapshot;
   start(name: string, run: (ctx: JobContext) => Promise<void>): void;
-  cancel(): void;
+  cancel(name?: string): void;
 }

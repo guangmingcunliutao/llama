@@ -1,4 +1,5 @@
 /** 正文清洗、按句号切句、过滤页脚/链接类噪音。 */
+import { JobCancelledError } from "./abort.js";
 
 const SENT_CUT = /(?<=[。！？；])/;
 const NOISE =
@@ -53,6 +54,20 @@ export function goodSentence(sent: string, term: string, minLen = 16, maxLen = 2
   return true;
 }
 
-export function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new JobCancelledError());
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      reject(new JobCancelledError());
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }

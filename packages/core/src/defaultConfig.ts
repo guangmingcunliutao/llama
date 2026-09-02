@@ -20,6 +20,7 @@ export function defaultUserConfig(): UserConfig {
     llamafactory: {
       datasetDir: "./outputs/lf",
       prefix: "term",
+      home: "",
     },
     sources: [
       {

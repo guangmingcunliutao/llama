@@ -2,18 +2,18 @@ import { useEffect, useRef } from "react";
 import { Card } from "antd";
 import { ConfirmDangerButton } from "./ConfirmDangerButton";
 
-const JOB_LABEL: Record<string, string> = {
+export const JOB_LABEL: Record<string, string> = {
   generate: "数据生成",
   "generate-eval": "验证集生成",
   train: "训练",
   infer: "推理",
   evaluate: "评估",
   analyze: "分析",
+  "lf-install": "安装 LlamaFactory",
 };
 
 /**
- * 进程内只有一个长任务槽。各业务页共用这份日志，是为了切页后仍能看进度和停止，
- * 不是每页各自一份输出。
+ * 本页相关任务的日志。不同任务可以并行，同名任务同时只能一个。
  */
 export function LogCard({
   lines,

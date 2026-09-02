@@ -1,12 +1,15 @@
 /** GET /api/jobs、POST /api/jobs/cancel、POST /api/jobs/:name */
 import type { FastifyPluginAsync } from "fastify";
+import { isJsonObject } from "../api/envelope.js";
 import { JOB_COMMANDS } from "../jobs/commands.js";
 
 const jobsRoute: FastifyPluginAsync = async (app) => {
   app.get("/api/jobs", async () => app.jobs.snapshot());
 
-  app.post("/api/jobs/cancel", async () => {
-    app.jobs.cancel();
+  app.post("/api/jobs/cancel", async (request) => {
+    const body = isJsonObject(request.body) ? request.body : {};
+    const name = typeof body.name === "string" && body.name.trim() ? body.name.trim() : undefined;
+    app.jobs.cancel(name);
     return app.jobs.snapshot();
   });
 

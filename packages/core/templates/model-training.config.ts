@@ -16,6 +16,7 @@ export default defineConfig({
   llamafactory: {
     datasetDir: "./outputs/lf",
     prefix: "term",
+    home: "",
   },
   sources: [
     {

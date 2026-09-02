@@ -66,7 +66,7 @@ interface GenForm {
 
 export default function DataPage() {
   const { message } = AntdApp.useApp();
-  const { job, start, cancel } = useJob();
+  const { job, start, cancel, isBusy } = useJob(["generate", "generate-eval"]);
   const [stats, setStats] = useState<DatasetStatus | null>(null);
   const [uploading, setUploading] = useState(false);
   const [sourceOpts, setSourceOpts] = useState<SourceItem[]>([]);
@@ -219,7 +219,7 @@ export default function DataPage() {
       </Row>
 
       <Card title="① 种子数据">
-        <Upload.Dragger {...uploadProps} disabled={uploading || job.busy}>
+        <Upload.Dragger {...uploadProps} disabled={uploading || isBusy("generate")}>
           <p className="ant-upload-drag-icon">
             <InboxOutlined />
           </p>
@@ -332,11 +332,11 @@ export default function DataPage() {
 
       <Card title="④ 生成">
         <Space wrap>
-          <Button type="primary" disabled={job.busy || !stats?.dict.exists} onClick={() => void runGenerate()}>
+          <Button type="primary" disabled={isBusy("generate") || !stats?.dict.exists} onClick={() => void runGenerate()}>
             生成训练集
           </Button>
           <Button
-            disabled={job.busy || !stats?.train.exists}
+            disabled={isBusy("generate-eval") || !stats?.train.exists}
             onClick={() => void start("/api/jobs/generate-eval")}
           >
             生成验证集

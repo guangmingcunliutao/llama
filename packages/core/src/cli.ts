@@ -93,11 +93,13 @@ const HELP: Record<string, string> = {
 `,
   train: `train — 启动 LlamaFactory 训练
 
-写出 dataset_info.json 与训练 yaml（若不存在），然后执行 llamafactory-cli train。
-需要本机已安装 LlamaFactory，或设置 LLAMAFACTORY_BIN。
+写出 dataset_info.json 与训练 yaml（若不存在），检测本机 LlamaFactory 后再启动训练。
+未通过检测不会启动子进程。
 
 选项:
   --train-config <yaml>   覆盖配置 train.config
+  --lf-home <dir>         LlamaFactory 仓库或安装根（含 src/llamafactory 或 .venv）
+  --lf-bin <file>         直接指定 llamafactory-cli
 `,
   import: `import — 从外部语料导入为 alpaca 句对（sft/train.jsonl）
 
@@ -327,6 +329,8 @@ export async function main(argv: string[]): Promise<number> {
       url: { type: "string" },
       model: { type: "string" },
       "train-config": { type: "string" },
+      "lf-home": { type: "string" },
+      "lf-bin": { type: "string" },
       dir: { type: "string" },
       note: { type: "string" },
       name: { type: "string" },
@@ -393,6 +397,12 @@ export async function main(argv: string[]): Promise<number> {
       : cfg;
     const code = await startTrainFromConfig(resolved, {
       onLog: (line) => console.log(line),
+      home: values["lf-home"]
+        ? path.isAbsolute(values["lf-home"])
+          ? values["lf-home"]
+          : path.resolve(cfg.root, values["lf-home"])
+        : undefined,
+      bin: values["lf-bin"],
     });
     return code.cancelled ? 130 : code.code;
   }

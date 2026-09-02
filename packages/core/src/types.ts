@@ -245,6 +245,10 @@ export interface UserConfig {
   importLimit?: number | null;
   /** LlamaFactory 数据集导出（export-lf 命令） */
   llamafactory?: {
+    /** LLaMA-Factory 仓库或安装根目录（含 src/llamafactory 或 .venv） */
+    home?: string;
+    /** 可选，直接指定 llamafactory-cli 可执行文件 */
+    bin?: string;
     datasetDir?: string;
     datasetInfo?: string;
     prefix?: string;
@@ -344,6 +348,8 @@ export interface ResolvedConfig {
   lfDatasetDir: string | null;
   lfDatasetInfo: string;
   lfPrefix: string;
+  lfHome: string | null;
+  lfBin: string | null;
   paths: OutputPaths;
 }
 
@@ -381,6 +387,7 @@ export interface GenerateFlags {
   cleanRatio?: string | number;
   maxPages?: string | number;
   seed?: string | number;
+  signal?: AbortSignal;
 }
 
 export interface ImportFlags {

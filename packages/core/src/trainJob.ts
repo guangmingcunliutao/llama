@@ -1,12 +1,19 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import {
+  decodeSubprocessBuffer,
+  detectLlamaFactory,
+  trainChildEnv,
+  trainSpawnSpec,
+} from "./llamaFactoryEnv.js";
 import { patchTrainYaml } from "./trainYaml.js";
 import type { ResolvedConfig } from "./types.js";
 
 export interface TrainRunOptions {
   yamlPath: string;
   cwd?: string;
+  home?: string | null;
   bin?: string;
   extraArgs?: string[];
   signal?: AbortSignal;
@@ -14,10 +21,14 @@ export interface TrainRunOptions {
 }
 
 export function resolveLlamaFactoryBin(explicit?: string): string | null {
-  if (explicit && fs.existsSync(explicit)) return explicit;
-  const env = process.env.LLAMAFACTORY_BIN;
-  if (env && fs.existsSync(env)) return env;
-  return null;
+  const found = detectLlamaFactory({ bin: explicit ?? null });
+  return found.bin;
+}
+
+function emitProcessOutput(buf: Buffer, onLog?: (line: string) => void): void {
+  for (const line of decodeSubprocessBuffer(buf).split(/\r?\n/)) {
+    if (line.trim()) onLog?.(line);
+  }
 }
 
 const DEFAULT_YAML = `### model
@@ -92,15 +103,21 @@ export function ensureTrainYaml(file: string, patch?: Record<string, string | nu
 }
 
 export function runTrain(opts: TrainRunOptions): Promise<{ code: number; cancelled: boolean }> {
-  const bin = opts.bin || process.env.LLAMAFACTORY_BIN || "llamafactory-cli";
-  const args = ["train", opts.yamlPath, ...(opts.extraArgs ?? [])];
-  opts.onLog?.(`$ ${bin} ${args.join(" ")}`);
+  const detect = detectLlamaFactory({ home: opts.home, bin: opts.bin });
+  if (!detect.ok) {
+    return Promise.reject(new Error(detect.errors.join("\n")));
+  }
+  const spec = trainSpawnSpec(detect, opts.yamlPath);
+  const extra = opts.extraArgs ?? [];
+  const args = [...spec.args, ...extra];
+  opts.onLog?.(`$ ${spec.command} ${args.join(" ")}`);
 
   return new Promise((resolve, reject) => {
-    const child = spawn(bin, args, {
+    const child = spawn(spec.command, args, {
       cwd: opts.cwd,
-      env: { ...process.env, PYTHONUTF8: "1" },
-      shell: process.platform === "win32",
+      env: trainChildEnv(detect),
+      shell: spec.shell,
+      windowsHide: true,
     });
 
     const onAbort = (): void => {
@@ -108,16 +125,8 @@ export function runTrain(opts: TrainRunOptions): Promise<{ code: number; cancell
     };
     opts.signal?.addEventListener("abort", onAbort);
 
-    child.stdout?.on("data", (buf: Buffer) => {
-      for (const line of buf.toString("utf8").split(/\r?\n/)) {
-        if (line.trim()) opts.onLog?.(line);
-      }
-    });
-    child.stderr?.on("data", (buf: Buffer) => {
-      for (const line of buf.toString("utf8").split(/\r?\n/)) {
-        if (line.trim()) opts.onLog?.(line);
-      }
-    });
+    child.stdout?.on("data", (buf: Buffer) => emitProcessOutput(buf, opts.onLog));
+    child.stderr?.on("data", (buf: Buffer) => emitProcessOutput(buf, opts.onLog));
     child.on("error", (err) => {
       opts.signal?.removeEventListener("abort", onAbort);
       reject(err);
@@ -132,6 +141,7 @@ export function runTrain(opts: TrainRunOptions): Promise<{ code: number; cancell
 export interface StartTrainOptions {
   onLog?: (line: string) => void;
   signal?: AbortSignal;
+  home?: string | null;
   bin?: string;
   patch?: Record<string, string | number | boolean>;
 }
@@ -160,11 +170,19 @@ export async function startTrainFromConfig(
   if (!fs.existsSync(cfg.paths.sft)) {
     throw new Error(`没有训练集 ${cfg.paths.sft}，请先在「数据生成」页或执行 mtrain generate`);
   }
+  const home = opts.home ?? cfg.lfHome;
+  const bin = opts.bin ?? cfg.lfBin ?? undefined;
+  const detect = detectLlamaFactory({ home, bin });
+  if (!detect.ok) {
+    throw new Error(detect.errors.join("\n"));
+  }
   const { yamlPath } = prepareTrainFiles(cfg, opts.patch);
+  for (const note of detect.notes) opts.onLog?.(note);
   return runTrain({
     yamlPath,
     cwd: cfg.root,
-    bin: opts.bin,
+    home,
+    bin,
     signal: opts.signal,
     onLog: opts.onLog,
   });

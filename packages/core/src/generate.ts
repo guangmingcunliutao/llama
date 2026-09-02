@@ -6,6 +6,7 @@
  * 多条样本按搜索结果从上往下、每条结果取一句，不把第一篇抽干。
  * 远程 HTTP 的频率限制在源内部、真正发请求前触发（缓存命中不限速）。
  */
+import { isJobCancelled, throwIfAborted } from "./abort.js";
 import fs from "node:fs";
 import path from "node:path";
 import { groupByCorrect, loadDictionary } from "./dictionary.js";
@@ -127,7 +128,7 @@ export async function generate(cfg: ResolvedConfig, flags: GenerateFlags = {}): 
 
   const limiter = new RequestRateLimiter(cfg.rate.requestsPerMinute, cfg.rate.jitterSec);
   const sources = selected.map((item) =>
-    buildSource(item, { root: cfg.root, cacheDir: cfg.cacheDir, globalLimiter: limiter }),
+    buildSource(item, { root: cfg.root, cacheDir: cfg.cacheDir, globalLimiter: limiter, signal: flags.signal }),
   );
 
   const remoteCount = sources.filter((s) => s.remote).length;
@@ -137,6 +138,7 @@ export async function generate(cfg: ResolvedConfig, flags: GenerateFlags = {}): 
   fs.mkdirSync(path.dirname(outFile), { recursive: true });
   const done = loadDoneKeys(outFile);
   const out = fs.createWriteStream(outFile, { flags: "a", encoding: "utf8" });
+  const signal = flags.signal;
 
   console.log(`[generate] config=${cfg.configFile}`);
   console.log(
@@ -153,10 +155,13 @@ export async function generate(cfg: ResolvedConfig, flags: GenerateFlags = {}): 
   let written = 0;
   const keepPool: SftExample[] = [];
   let termIndex = 0;
+  try {
   for (const correct of terms) {
+    throwIfAborted(signal);
     termIndex += 1;
     let sentences: SentenceHit[] = [];
     for (const src of sources) {
+      throwIfAborted(signal);
       try {
         const docs = await src.search(correct);
         sentences = collectSentences(docs, correct, minLen, maxLen);
@@ -165,6 +170,7 @@ export async function generate(cfg: ResolvedConfig, flags: GenerateFlags = {}): 
         );
         if (sentences.length) break;
       } catch (err) {
+        if (isJobCancelled(err)) throw err;
         const message = err instanceof Error ? err.message : String(err);
         console.error(`[fail] source=${src.name} term=${correct} ${message}`);
       }
@@ -218,8 +224,11 @@ export async function generate(cfg: ResolvedConfig, flags: GenerateFlags = {}): 
     written += 1;
   }
   if (keepN) console.log(`[generate] clean_keep=${keepN}`);
+  } finally {
+    await new Promise<void>((resolve) => out.end(resolve));
+  }
 
-  await new Promise<void>((resolve) => out.end(resolve));
+  throwIfAborted(signal);
 
   if (writeSharegpt) {
     const alpacaRows = readJsonl<SftExample>(outFile, "empty");

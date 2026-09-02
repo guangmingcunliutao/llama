@@ -9,7 +9,7 @@ import { PageHeader } from "../ui/PageHeader";
 export const menu = { title: "评估", icon: "ExperimentOutlined", order: 30 };
 
 export default function EvalPage() {
-  const { job, start, cancel } = useJob();
+  const { job, start, cancel, isBusy } = useJob(["infer", "evaluate"]);
   const [form] = Form.useForm();
   const [metrics, setMetrics] = useState<Record<string, unknown> | null>(null);
 
@@ -76,10 +76,10 @@ export default function EvalPage() {
           </Row>
         </Form>
         <Space>
-          <Button type="primary" disabled={job.busy} onClick={() => void runInfer()}>
+          <Button type="primary" disabled={isBusy("infer")} onClick={() => void runInfer()}>
             开始推理
           </Button>
-          <Button disabled={job.busy} onClick={() => void start("/api/jobs/evaluate")}>
+          <Button disabled={isBusy("evaluate")} onClick={() => void start("/api/jobs/evaluate")}>
             计算指标
           </Button>
           <ConfirmDangerButton disabled={!job.busy} onConfirm={cancel} />

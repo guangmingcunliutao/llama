@@ -14,7 +14,7 @@
     }
   },
   "types": "./dist/index.d.ts",
-  "files": ["dist", "templates", "docs"],
+  "files": ["dist", "templates", "docs", "scripts"],
   "scripts": {
     "build": "vite build && tsc -p tsconfig.json --emitDeclarationOnly",
     "dev": "vite build --watch",

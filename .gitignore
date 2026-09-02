@@ -13,3 +13,6 @@ __pycache__/
 /model-training.config.mjs
 /model-training.config.ts
 .DS_Store
+LlamaFactory
+finetune
+.cache/
