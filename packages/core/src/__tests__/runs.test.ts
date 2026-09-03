@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { fingerprintValue } from "../runs/fingerprint.js";
 import { createRun, listRuns, loadWorkspace, patchWorkspace, summarizeRun } from "../runs/store.js";
 import { resumeBlockedReason } from "../runs/trainResume.js";
+import { hasLoraAdapter, resolveLoraAdapterDir } from "../runs/adapter.js";
 
 describe("runs store", () => {
   it("creates a data run and lists it", () => {
@@ -27,5 +28,19 @@ describe("runs store", () => {
     const reason = resumeBlockedReason({ learning_rate: "1e-4" }, { learning_rate: "2e-4" });
     expect(reason).toMatch(/learning_rate/);
     expect(resumeBlockedReason({ learning_rate: "1e-4" }, { learning_rate: "1e-4" })).toBeNull();
+    expect(resumeBlockedReason({ num_train_epochs: 1 }, { num_train_epochs: 1.0 })).toBeNull();
+    expect(resumeBlockedReason({ learning_rate: "1.0e-4" }, { learning_rate: 0.0001 })).toBeNull();
+  });
+});
+
+describe("lora adapter lookup", () => {
+  it("finds adapter inside checkpoint-N", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mt-adapter-"));
+    const ckpt = path.join(dir, "ckpt");
+    const step = path.join(ckpt, "checkpoint-50");
+    fs.mkdirSync(step, { recursive: true });
+    fs.writeFileSync(path.join(step, "adapter_config.json"), "{}");
+    expect(hasLoraAdapter(ckpt)).toBe(false);
+    expect(resolveLoraAdapterDir(ckpt)).toBe(step);
   });
 });

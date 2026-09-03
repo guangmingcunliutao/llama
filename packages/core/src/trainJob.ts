@@ -18,7 +18,7 @@ import {
 } from "./modelSource.js";
 import { appendRunLog, patchRun } from "./runs/store.js";
 import { resolveTrainSession } from "./runs/trainSession.js";
-import { hasLoraAdapter } from "./runs/adapter.js";
+import { resolveLoraAdapterDir } from "./runs/adapter.js";
 import { findLatestCheckpoint } from "./runs/trainResume.js";
 import { patchTrainYaml, parseTrainYaml } from "./trainYaml.js";
 import type { ResolvedConfig } from "./types.js";
@@ -153,8 +153,10 @@ export function runTrain(opts: TrainRunOptions): Promise<{ code: number; cancell
 
     const onAbort = (): void => {
       killProcessTree(child);
+      setTimeout(() => killProcessTree(child), 300);
     };
     opts.signal?.addEventListener("abort", onAbort);
+    if (opts.signal?.aborted) onAbort();
 
     child.stdout?.on("data", (buf: Buffer) => emitProcessOutput(buf, opts.onLog));
     child.stderr?.on("data", (buf: Buffer) => emitProcessOutput(buf, opts.onLog));
@@ -214,7 +216,7 @@ export async function startTrainFromConfig(
     label: opts.label,
     knobs: opts.patch,
   });
-  const { paths, params, resumeFrom } = session;
+  const { paths, params, resumeFrom, adapterDir } = session;
   const runId = session.meta.id;
 
   const home = opts.home ?? cfg.lfHome;
@@ -239,6 +241,9 @@ export async function startTrainFromConfig(
   patch.output_dir = paths.ckpt.replaceAll("\\", "/");
   patch.save_steps = patch.save_steps ?? 50;
   delete patch.save_total_limit;
+  delete patch.resume_from_checkpoint;
+  delete patch.adapter_name_or_path;
+  delete patch.create_new_adapter;
   if (session.meta.mode === "resume" && resumeFrom) {
     patch.overwrite_output_dir = false;
     patch.resume_from_checkpoint = resumeFrom.replaceAll("\\", "/");
@@ -246,11 +251,14 @@ export async function startTrainFromConfig(
     patch.overwrite_output_dir = true;
   }
   if (session.meta.mode === "continue") {
-    const parentId = session.meta.parentId;
-    if (parentId) {
-      const parentCkpt = path.join(cfg.outDir, "train", parentId, "ckpt");
-      patch.adapter_name_or_path = parentCkpt.replaceAll("\\", "/");
+    const adapter = adapterDir || (session.meta.parentId
+      ? resolveLoraAdapterDir(path.join(cfg.outDir, "train", session.meta.parentId, "ckpt"))
+      : null);
+    if (!adapter) {
+      throw new Error("上一份训练还没有可用的 LoRA。需要至少保存过一份 checkpoint，或已经训完。");
     }
+    patch.adapter_name_or_path = adapter.replaceAll("\\", "/");
+    patch.create_new_adapter = false;
   }
 
   writeDatasetInfo(paths.lf, paths.sftCopy);
@@ -271,6 +279,7 @@ export async function startTrainFromConfig(
   for (const note of detect.notes) onLog(note);
   onLog(`[train] run=${runId} mode=${session.meta.mode} data=${params.dataRunId}`);
   if (resumeFrom) onLog(`[train] resume_from_checkpoint=${resumeFrom}`);
+  if (session.meta.mode === "continue" && adapterDir) onLog(`[train] adapter_name_or_path=${adapterDir}`);
 
   patchRun(cfg.outDir, "train", runId, { status: "running", pid: process.pid, error: null });
 
@@ -290,7 +299,7 @@ export async function startTrainFromConfig(
   });
 
   const latest = findLatestCheckpoint(paths.ckpt);
-  const adapterReady = hasLoraAdapter(paths.ckpt);
+  const adapterReady = Boolean(resolveLoraAdapterDir(paths.ckpt));
   if (result.cancelled) {
     patchRun(cfg.outDir, "train", runId, {
       status: "interrupted",

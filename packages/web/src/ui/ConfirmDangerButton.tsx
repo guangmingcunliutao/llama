@@ -1,4 +1,4 @@
-import { Button, Popconfirm } from "antd";
+import { Button, ConfigProvider, Popconfirm } from "antd";
 import type { ReactNode } from "react";
 
 /** 停止任务等不可轻易撤销的操作，必须点确认。 */
@@ -15,19 +15,22 @@ export function ConfirmDangerButton({
   title?: string;
   description?: string;
 }) {
+  const locked = Boolean(disabled);
   return (
-    <Popconfirm
-      title={title}
-      description={description}
-      okText="确认停止"
-      cancelText="取消"
-      okButtonProps={{ danger: true }}
-      disabled={disabled}
-      onConfirm={() => void onConfirm()}
-    >
-      <Button danger htmlType="button" disabled={disabled}>
-        {label}
-      </Button>
-    </Popconfirm>
+    <ConfigProvider componentDisabled={locked}>
+      <Popconfirm
+        title={title}
+        description={description}
+        okText="确认停止"
+        cancelText="取消"
+        okButtonProps={{ danger: true }}
+        disabled={locked}
+        onConfirm={() => void onConfirm()}
+      >
+        <Button danger htmlType="button" disabled={locked}>
+          {label}
+        </Button>
+      </Popconfirm>
+    </ConfigProvider>
   );
 }

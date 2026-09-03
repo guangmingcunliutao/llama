@@ -94,9 +94,12 @@ function fromAlpaca(raw: Record<string, unknown>, opts: NormalizeOptions): SftEx
 }
 
 function fromShareGpt(raw: Record<string, unknown>, opts: NormalizeOptions): SftExample | null {
-  const system = clean(String(raw.system ?? ""));
   const conv = raw.conversations ?? raw.messages;
   if (!Array.isArray(conv) || conv.length < 2) return null;
+  const systemTurn = conv.find(
+    (t: unknown) => isRecord(t) && (t.from === "system" || t.role === "system"),
+  );
+  const system = clean(String(raw.system ?? (isRecord(systemTurn) ? (systemTurn.value ?? systemTurn.content) : "") ?? ""));
   const human = conv.find(
     (t: unknown) => isRecord(t) && (t.from === "human" || t.role === "user"),
   );

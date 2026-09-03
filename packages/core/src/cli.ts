@@ -12,6 +12,7 @@ import { exportLf } from "./exportLf.js";
 import { generate } from "./generate.js";
 import { generateEval } from "./generateEval.js";
 import { importDataset } from "./importDataset.js";
+import { importReadyTrain } from "./importReady.js";
 import { infer } from "./infer.js";
 import { prepareDict } from "./prepare.js";
 import { availableSourceTypes } from "./sources/registry.js";
@@ -36,7 +37,7 @@ const HELP: Record<string, string> = {
   generate-eval  独立检索写出验证集（写入当前数据实验）
   train          启动 llamafactory-cli train（写入训练实验）
   runs           列出或选中实验
-  import         从外部 json/jsonl 导入（自动识别 alpaca / sharegpt）
+  import         导入现成训练 jsonl，新建数据实验并划分验证集
   split          划分训练集与评估集（seen / unseen / keep）
   export-lf      将 split 产物导出到 LlamaFactory dataset_dir
   pipeline       import + split + export-lf（一键数据准备）
@@ -114,14 +115,16 @@ const HELP: Record<string, string> = {
   --hub <name>
   --hf-endpoint <url>
 `,
-  import: `import — 从外部语料导入为 alpaca 句对（sft/train.jsonl）
+  import: `import — 导入现成训练数据，新建数据实验并划分验证集
 
-自动识别：alpaca（instruction/input/output）、sharegpt（conversations/messages）。
-也支持扩展名为 .json 但实际按行存储的 jsonl。
+自动识别：alpaca（instruction/input/output）、sharegpt / messages。
+导入后按词对划分 train / eval_seen_pair / eval_unseen_pair / eval_keep。
+若指定 --output，则只规范化写出该文件，不创建实验、不划分。
 
 选项:
   --input <file>    源文件（或配置 import.source）
-  --output <file>   覆盖 outDir/sft/train.jsonl
+  --label <name>    数据实验名称
+  --output <file>   只写出规范化样本，不划分验证集
   --limit <n>       最多导入 n 条（试跑/限量训练）
 `,
   "export-lf": `export-lf — 将 split 后的 train/eval 写入 LlamaFactory 数据集目录
@@ -481,11 +484,22 @@ export async function main(argv: string[]): Promise<number> {
   }
 
   if (command === "import") {
-    importDataset(cfg, {
+    if (values.output) {
+      importDataset(cfg, {
+        input: values.input,
+        output: values.output,
+        limit: values.limit != null ? Number(values.limit) : undefined,
+      });
+      return 0;
+    }
+    const imported = importReadyTrain(cfg, {
       input: values.input,
-      output: values.output,
+      label: values.label,
       limit: values.limit != null ? Number(values.limit) : undefined,
     });
+    console.log(
+      `[import] run=${imported.runId} train=${imported.train} eval=${imported.eval} seen=${imported.eval_seen_pair} unseen=${imported.eval_unseen_pair} keep=${imported.eval_keep}`,
+    );
     return 0;
   }
 

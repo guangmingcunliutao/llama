@@ -4,7 +4,7 @@ export const PIPELINE = [
     path: "/data",
     title: "数据生成",
     blurb: "词对与句对",
-    detail: "上传错词/正词表，检索真实句子。训练集和验证集分开生成，句子不重复。",
+    detail: "上传错词表检索句对，或直接导入现成训练 jsonl 并划分验证集。句子不与训练重复。",
   },
   {
     path: "/train",

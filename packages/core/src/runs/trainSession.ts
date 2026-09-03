@@ -3,7 +3,7 @@ import path from "node:path";
 import { fingerprintFile, fingerprintValue } from "./fingerprint.js";
 import { trainRunPaths } from "./paths.js";
 import { findLatestCheckpoint, resumeBlockedReason } from "./trainResume.js";
-import { hasLoraAdapter } from "./adapter.js";
+import { resolveLoraAdapterDir } from "./adapter.js";
 import {
   createRun,
   loadWorkspace,
@@ -39,6 +39,7 @@ export interface TrainSession {
   paths: TrainRunPaths;
   params: TrainParams;
   resumeFrom: string | null;
+  adapterDir: string | null;
 }
 
 export function resolveTrainSession(
@@ -72,7 +73,7 @@ export function resolveTrainSession(
     const resumeFrom = findLatestCheckpoint(trainRunPaths(outDir, id).ckpt);
     if (!resumeFrom) throw new Error("没有 checkpoint，无法从中断处继续");
     patchWorkspace(outDir, { trainRunId: id });
-    return { meta, paths: trainRunPaths(outDir, id), params: stored, resumeFrom };
+    return { meta, paths: trainRunPaths(outDir, id), params: stored, resumeFrom, adapterDir: null };
   }
 
   if (mode === "continue") {
@@ -81,8 +82,9 @@ export function resolveTrainSession(
     const parent = readRun(outDir, "train", parentId);
     if (!parent) throw new Error(`找不到训练实验 ${parentId}`);
     const parentPaths = trainRunPaths(outDir, parentId);
-    if (!hasLoraAdapter(parentPaths.ckpt)) {
-      throw new Error("上一份训练还没有可用的 LoRA adapter，不能在此基础上再训练");
+    const adapterDir = resolveLoraAdapterDir(parentPaths.ckpt);
+    if (!adapterDir) {
+      throw new Error("上一份训练还没有可用的 LoRA。需要至少保存过一份 checkpoint，或已经训完。");
     }
     const parentParams = readTrainParams(outDir, parentId);
     const dataRunId = flags.dataRunId || parent.dataRunId || ws.dataRunId;
@@ -90,6 +92,8 @@ export function resolveTrainSession(
     if (!fs.existsSync(data.paths.train)) throw new Error(`没有训练集 ${data.paths.train}`);
     const dataFingerprint = fingerprintFile(data.paths.train) || "";
     const mergedKnobs = { ...(parentParams?.knobs ?? {}), ...knobs };
+    delete mergedKnobs.resume_from_checkpoint;
+    delete mergedKnobs.adapter_name_or_path;
     const params: TrainParams = {
       knobs: mergedKnobs,
       dataRunId: data.meta.id,
@@ -108,10 +112,11 @@ export function resolveTrainSession(
       },
     });
     const paths = trainRunPaths(outDir, meta.id);
+    fs.mkdirSync(path.dirname(paths.sftCopy), { recursive: true });
     fs.copyFileSync(data.paths.train, paths.sftCopy);
     writeTrainParams(outDir, meta.id, params);
     patchWorkspace(outDir, { trainRunId: meta.id, dataRunId: data.meta.id });
-    return { meta, paths, params, resumeFrom: null };
+    return { meta, paths, params, resumeFrom: null, adapterDir };
   }
 
   const dataRunId = flags.dataRunId || ws.dataRunId;
@@ -139,5 +144,5 @@ export function resolveTrainSession(
   fs.copyFileSync(data.paths.train, paths.sftCopy);
   writeTrainParams(outDir, meta.id, params);
   patchWorkspace(outDir, { trainRunId: meta.id, dataRunId: data.meta.id });
-  return { meta, paths, params, resumeFrom: null };
+  return { meta, paths, params, resumeFrom: null, adapterDir: null };
 }

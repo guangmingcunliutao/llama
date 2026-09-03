@@ -3,7 +3,7 @@ import path from "node:path";
 import { countJsonl } from "../jsonl.js";
 import { pidAlive } from "../killTree.js";
 import { isRecord } from "../util.js";
-import { hasLoraAdapter } from "./adapter.js";
+import { resolveLoraAdapterDir } from "./adapter.js";
 import { allocateRunId } from "./id.js";
 import {
   dataRunPaths,
@@ -269,7 +269,7 @@ export function summarizeRun(outDir: string, meta: RunMeta): RunSummary {
     const paths = trainRunPaths(outDir, live.id);
     const latest = findLatestCheckpoint(paths.ckpt);
     lastCheckpoint = latest ? path.basename(latest) : lastCheckpoint;
-    adapterReady = hasLoraAdapter(paths.ckpt);
+    adapterReady = Boolean(resolveLoraAdapterDir(paths.ckpt));
     const resume = trainCanResume(outDir, live);
     canResume = resume.ok;
     resumeHint = resume.hint;

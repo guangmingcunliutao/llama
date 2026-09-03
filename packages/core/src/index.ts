@@ -26,6 +26,7 @@ export {
 } from "./runs/index.js";
 export type { RunKind, RunMeta, RunMode, RunSummary, WorkspacePointer } from "./runs/index.js";
 export { prepareDict } from "./prepare.js";
+export { importReadyTrain } from "./importReady.js";
 export { countJsonl } from "./jsonl.js";
 export { ExclusiveJob } from "./jobLock.js";
 export {

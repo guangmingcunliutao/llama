@@ -47,6 +47,7 @@ export default function TrainPage() {
   const [form] = Form.useForm<TrainForm>();
   const [dataOptions, setDataOptions] = useState<RunSummary[]>([]);
   const rememberTimer = useRef<number | null>(null);
+  const selectedIdRef = useRef<string | null>(null);
   const locked = job.busy;
 
   useEffect(() => {
@@ -82,9 +83,7 @@ export default function TrainPage() {
       const hub =
         lf.hub === "huggingface" || lf.hub === "openmind" || lf.hub === "modelscope" ? lf.hub : "modelscope";
       const maxStepsRaw = Number(knobs.max_steps);
-      form.setFieldsValue({
-        mode: trainRuns.selected?.canResume ? "resume" : "fresh",
-        label: "",
+      const next: Partial<TrainForm> = {
         dataRunId: dataBody.data?.workspace?.dataRunId ?? "",
         lfHome: lf.home ?? "",
         modelKind: local ? "local" : "online",
@@ -99,9 +98,19 @@ export default function TrainPage() {
         save_steps: Number(knobs.save_steps ?? 50),
         per_device_train_batch_size: Number(knobs.per_device_train_batch_size ?? 1),
         cutoff_len: Number(knobs.cutoff_len ?? 256),
-      });
+      };
+      if (selectedIdRef.current !== trainRuns.selectedId) {
+        selectedIdRef.current = trainRuns.selectedId;
+        next.label = "";
+        next.mode = trainRuns.selected?.canResume
+          ? "resume"
+          : trainRuns.selected?.adapterReady
+            ? "continue"
+            : "fresh";
+      }
+      form.setFieldsValue(next);
     })();
-  }, [form, locked, trainRuns.selected?.canResume]);
+  }, [form, locked, trainRuns.selectedId, trainRuns.selected?.canResume, trainRuns.selected?.adapterReady]);
 
   useEffect(() => {
     if (!job.busy) void trainRuns.refresh();
@@ -143,6 +152,20 @@ export default function TrainPage() {
     if (!model) {
       message.warning("请填写要用的底模（本机文件夹或网上的模型名）");
       return;
+    }
+    if (values.mode === "resume" || values.mode === "continue") {
+      if (!trainRuns.selectedId) {
+        message.warning("请先在表格里点选一次训练实验");
+        return;
+      }
+      if (values.mode === "resume" && !trainRuns.selected?.canResume) {
+        message.warning(trainRuns.selected?.resumeHint || "没有 checkpoint，无法继续未完成。把保存步长调小后再训。");
+        return;
+      }
+      if (values.mode === "continue" && !trainRuns.selected?.adapterReady) {
+        message.warning("上一份还没有 LoRA。需要至少保存过一份 checkpoint，或已经训完。");
+        return;
+      }
     }
     const maxSteps = Number(values.max_steps);
     try {
@@ -244,7 +267,19 @@ export default function TrainPage() {
           </Form.Item>
         </Card>
         <Card title="超参" extra={locked ? "训练进行中，参数已锁定" : undefined}>
-          <Form.Item name="mode" label="方式">
+          <Form.Item
+            name="mode"
+            label="方式"
+            extra={
+              trainRuns.selected?.canResume
+                ? trainRuns.selected.resumeHint || "可从中断处继续"
+                : trainRuns.selected?.adapterReady
+                  ? "该实验已有 LoRA，可用「基于上次再训练」"
+                  : trainRuns.selected
+                    ? trainRuns.selected.resumeHint || "还没有 checkpoint / LoRA。保存步长太大且中断太早时，两份都不能用。"
+                    : "先在上方表格点选一次训练实验"
+            }
+          >
             <Radio.Group
               optionType="button"
               options={[
@@ -314,7 +349,7 @@ export default function TrainPage() {
             }}
           </Form.Item>
           <Row gutter={16}>
-            <Col xs={24} md={12}>
+            <Col xs={24} md={8}>
               <Form.Item name="template" label="对话模板 template">
                 <Input />
               </Form.Item>
@@ -330,7 +365,7 @@ export default function TrainPage() {
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
-              <Form.Item name="num_train_epochs" label="训练轮数" extra="max_steps 为空时按轮数走完数据。默认 2。">
+              <Form.Item name="num_train_epochs" label="训练轮数" extra="最大步数留空时按轮数走完数据。默认 2。">
                 <InputNumber min={0.1} step={0.1} style={{ width: "100%" }} />
               </Form.Item>
             </Col>
@@ -346,7 +381,8 @@ export default function TrainPage() {
             <Col xs={24} md={8}>
               <Form.Item
                 name="save_steps"
-                label="保存间隔 save_steps"
+                label="保存步长"
+                extra="每隔多少步存一份 checkpoint。数据量大时改成 200 或 500，避免文件太多。"
               >
                 <InputNumber min={1} step={50} style={{ width: "100%" }} />
               </Form.Item>
@@ -362,21 +398,21 @@ export default function TrainPage() {
               </Form.Item>
             </Col>
           </Row>
-          <Form.Item disabled={false} style={{ marginBottom: 0 }}>
-            <Space>
-              <Button type="primary" htmlType="button" disabled={locked} onClick={() => void run()}>
-                开始训练
-              </Button>
-              <ConfirmDangerButton
-                disabled={!locked}
-                onConfirm={cancel}
-                description="会结束训练进程。已保存的 checkpoint 会留在当前实验里，可继续未完成训练。"
-              />
-            </Space>
-          </Form.Item>
         </Card>
       </Form>
-      <LogCard lines={job.logs} busy={job.busy} jobName={job.job} onStop={cancel} />
+      <Card>
+        <Space>
+          <Button type="primary" htmlType="button" disabled={locked} onClick={() => void run()}>
+            开始训练
+          </Button>
+          <ConfirmDangerButton
+            disabled={!locked}
+            onConfirm={() => cancel("train")}
+            description="会结束训练进程。已保存的 checkpoint 会留在当前实验里，可继续未完成训练。"
+          />
+        </Space>
+      </Card>
+      <LogCard lines={job.logs} busy={job.busy} jobName={job.job} onStop={() => cancel("train")} />
     </>
   );
 }

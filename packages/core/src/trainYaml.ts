@@ -26,6 +26,7 @@ export const TRAIN_KEYS = [
   "save_total_limit",
   "resume_from_checkpoint",
   "adapter_name_or_path",
+  "create_new_adapter",
 ] as const;
 
 export type TrainKey = (typeof TRAIN_KEYS)[number];

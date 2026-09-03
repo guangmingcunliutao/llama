@@ -27,6 +27,16 @@ const RESUME_LOCK_KEYS = [
   "warmup_ratio",
 ] as const;
 
+function sameKnob(
+  stored: string | number | boolean,
+  next: string | number | boolean,
+): boolean {
+  if (String(stored) === String(next)) return true;
+  const a = Number(stored);
+  const b = Number(next);
+  return Number.isFinite(a) && Number.isFinite(b) && a === b;
+}
+
 export function resumeBlockedReason(
   stored: Record<string, string | number | boolean>,
   next: Record<string, string | number | boolean>,
@@ -34,7 +44,7 @@ export function resumeBlockedReason(
   for (const key of RESUME_LOCK_KEYS) {
     if (next[key] == null) continue;
     if (stored[key] == null) continue;
-    if (String(stored[key]) !== String(next[key])) {
+    if (!sameKnob(stored[key], next[key])) {
       return `超参 ${key} 已改变，不能从中断处继续，请全新训练或基于上次再训练`;
     }
   }

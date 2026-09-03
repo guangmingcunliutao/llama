@@ -22,8 +22,10 @@ import {
   looksLikeLlamaFactoryHome,
   patchWorkspace,
   quantizeSource,
+  readRun,
   requireDataRun,
   startTrainFromConfig,
+  summarizeRun,
   trainRunPaths,
   validateModelSource,
 } from "@model-training/core";
@@ -121,6 +123,22 @@ const trainCommand: JobCommand = {
         hub: asFlag(body.hub),
       });
       if (invalid) return invalid;
+    }
+    if (mode === "resume" || mode === "continue") {
+      const ws = loadWorkspace(cfg.outDir);
+      const id = mode === "resume"
+        ? asFlag(body.runId) ?? ws.trainRunId
+        : asFlag(body.parentId) ?? ws.trainRunId;
+      if (!id) return mode === "resume" ? "请先点选要继续的训练实验" : "请先点选上一份训练实验";
+      const meta = readRun(cfg.outDir, "train", id);
+      if (!meta) return `找不到训练实验 ${id}`;
+      const sum = summarizeRun(cfg.outDir, meta);
+      if (mode === "resume" && !sum.canResume) {
+        return sum.resumeHint || "没有 checkpoint，无法继续未完成训练。把保存步长调小后再训，中断才接得上。";
+      }
+      if (mode === "continue" && !sum.adapterReady) {
+        return "上一份还没有 LoRA。需要至少保存过一份 checkpoint，或已经训完。";
+      }
     }
     return null;
   },

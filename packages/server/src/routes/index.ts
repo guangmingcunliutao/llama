@@ -13,6 +13,7 @@ import reportsRoute from "./reports.js";
 import runsRoute from "./runs.js";
 import trainEnvRoute from "./trainEnv.js";
 import uploadSeedRoute from "./uploadSeed.js";
+import uploadTrainRoute from "./uploadTrain.js";
 
 const PLUGINS = [
   healthRoute,
@@ -20,6 +21,7 @@ const PLUGINS = [
   providersRoute,
   datasetsRoute,
   uploadSeedRoute,
+  uploadTrainRoute,
   jobsRoute,
   reportsRoute,
   runsRoute,

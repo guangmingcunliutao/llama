@@ -207,6 +207,7 @@ export interface TrainHyperParams {
   save_total_limit?: number;
   resume_from_checkpoint?: string;
   adapter_name_or_path?: string;
+  create_new_adapter?: boolean;
 }
 
 /** yaml 解析结果，允许 null。 */
@@ -436,6 +437,25 @@ export interface ImportResult {
   input: string;
   output: string;
   count: number;
+}
+
+/** 上传现成训练集：新建数据实验并划分验证集。 */
+export interface ImportReadyFlags {
+  input?: string;
+  label?: string;
+  limit?: number | null;
+}
+
+export interface ImportReadyResult {
+  runId: string;
+  label: string;
+  input: string;
+  imported: number;
+  train: number;
+  eval: number;
+  eval_seen_pair: number;
+  eval_unseen_pair: number;
+  eval_keep: number;
 }
 
 export interface ExportLfFlags {

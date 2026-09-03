@@ -1,7 +1,7 @@
 /**
- * 数据生成：上传种子、选择检索源、按实验写入 outputs/data/<id>。
+ * 数据生成：上传种子检索句对，或直接导入现成训练集并划分验证集。
  */
-import { InboxOutlined } from "@ant-design/icons";
+import { UploadOutlined } from "@ant-design/icons";
 import {
   Alert,
   Button,
@@ -18,6 +18,7 @@ import {
   Statistic,
   Table,
   Tag,
+  Tooltip,
   Typography,
   Upload,
 } from "antd";
@@ -87,6 +88,7 @@ export default function DataPage() {
   const runs = useRuns("data");
   const [stats, setStats] = useState<DatasetStatus | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadingTrain, setUploadingTrain] = useState(false);
   const [sourceOpts, setSourceOpts] = useState<SourceItem[]>([]);
   const [form] = Form.useForm<GenForm>();
   const locked = job.busy;
@@ -163,10 +165,14 @@ export default function DataPage() {
     if (runs.selected?.canResume) form.setFieldValue("mode", "resume");
   }, [runs.selected?.canResume, form, locked]);
 
+  useEffect(() => {
+    void loadStats();
+  }, [runs.selectedId, loadStats]);
+
   const uploadProps: UploadProps = {
     name: "file",
     multiple: false,
-    showUploadList: true,
+    showUploadList: false,
     maxCount: 1,
     accept: ".xlsx,.xls,.csv,.jsonl,.json",
     customRequest: async (options) => {
@@ -191,6 +197,58 @@ export default function DataPage() {
         message.error(text);
       } finally {
         setUploading(false);
+      }
+    },
+  };
+
+  const trainUploadProps: UploadProps = {
+    name: "file",
+    multiple: false,
+    showUploadList: false,
+    maxCount: 1,
+    accept: ".jsonl,.json",
+    customRequest: async (options) => {
+      const file = options.file as File;
+      const formData = new FormData();
+      formData.append("file", file);
+      setUploadingTrain(true);
+      try {
+        const res = await fetch("/api/upload/train", { method: "POST", body: formData });
+        const body = (await res.json()) as {
+          ok: boolean;
+          error?: string;
+          data?: DatasetStatus & {
+            imported?: {
+              runId: string;
+              imported: number;
+              train: number;
+              eval: number;
+              eval_seen_pair: number;
+              eval_unseen_pair: number;
+              eval_keep: number;
+            };
+          };
+        };
+        if (!res.ok) {
+          options.onError?.(new Error(body.error || "上传失败"));
+          message.error(body.error || "上传失败");
+          return;
+        }
+        if (body.data) setStats(body.data);
+        await runs.refresh();
+        options.onSuccess?.(body);
+        const imported = body.data?.imported;
+        message.success(
+          imported
+            ? `已导入 ${imported.imported} 条：训练 ${imported.train}，验证 ${imported.eval}（seen ${imported.eval_seen_pair} / unseen ${imported.eval_unseen_pair} / keep ${imported.eval_keep}）`
+            : "训练数据已导入并划分验证集",
+        );
+      } catch (err) {
+        const text = err instanceof Error ? err.message : String(err);
+        options.onError?.(err as Error);
+        message.error(text);
+      } finally {
+        setUploadingTrain(false);
       }
     },
   };
@@ -232,7 +290,7 @@ export default function DataPage() {
     <>
       <PageHeader
         title="数据生成"
-        description="每次生成是一次数据实验，写在 outputs/data 下。可以中断后续跑，也可以在上一份上追加。"
+        description="每次生成是一次数据实验，写在 outputs/data 下。可以从词对检索生成，也可以直接上传已经整理好的训练 jsonl，系统会按词对划分验证集。"
       />
       <PipelineStrip />
 
@@ -247,37 +305,75 @@ export default function DataPage() {
         </Col>
         <Col xs={24} md={8}>
           <Card>
-            <Statistic title="当前训练集" value={runs.selected?.trainRows ?? stats?.train.rows ?? 0} suffix="条" />
-            <Typography.Text className="stat-path">{runs.selectedId ?? "未选实验"}</Typography.Text>
+            <Statistic title="当前训练集" value={runs.selected?.trainRows ?? 0} suffix="条" />
+            <Typography.Text className="stat-path">
+              {runs.selected ? `${runs.selected.label} · ${runs.selected.id}` : "未选实验"}
+            </Typography.Text>
           </Card>
         </Col>
         <Col xs={24} md={8}>
           <Card>
-            <Statistic title="验证全集 eval" value={stats?.eval.rows ?? 0} suffix="条" />
-            <Typography.Text className="stat-path">seen + unseen，不含 keep</Typography.Text>
+            <Statistic title="验证全集 eval" value={runs.selected?.evalRows ?? stats?.eval.rows ?? 0} suffix="条" />
+            <Typography.Text className="stat-path">
+              {runs.selected ? `${runs.selected.label} · seen + unseen` : "点选实验后显示"}
+            </Typography.Text>
           </Card>
         </Col>
         <Col xs={24} md={8}>
           <Card>
             <Statistic title="seen 词对见过" value={stats?.evalSeen?.rows ?? 0} suffix="条" />
-            <Typography.Text className="stat-path">eval_seen_pair.jsonl</Typography.Text>
+            <Typography.Text className="stat-path">
+              {runs.selectedId ? `${runs.selectedId}/eval/eval_seen_pair.jsonl` : "eval_seen_pair.jsonl"}
+            </Typography.Text>
           </Card>
         </Col>
         <Col xs={24} md={8}>
           <Card>
             <Statistic title="unseen 词对未见" value={stats?.evalUnseen?.rows ?? 0} suffix="条" />
-            <Typography.Text className="stat-path">eval_unseen_pair.jsonl</Typography.Text>
+            <Typography.Text className="stat-path">
+              {runs.selectedId ? `${runs.selectedId}/eval/eval_unseen_pair.jsonl` : "eval_unseen_pair.jsonl"}
+            </Typography.Text>
           </Card>
         </Col>
         <Col xs={24} md={8}>
           <Card>
             <Statistic title="keep 规范句" value={stats?.evalKeep?.rows ?? 0} suffix="条" />
-            <Typography.Text className="stat-path">eval_keep.jsonl</Typography.Text>
+            <Typography.Text className="stat-path">
+              {runs.selectedId ? `${runs.selectedId}/eval/eval_keep.jsonl` : "eval_keep.jsonl"}
+            </Typography.Text>
           </Card>
         </Col>
       </Row>
 
-      <Card title="数据实验" extra={runs.selected?.resumeHint}>
+      <Card
+        title="数据实验"
+        extra={
+          <Space wrap>
+            <Tooltip title="Excel / CSV，需有「错误词」「建议更正词」两列">
+              <Upload {...uploadProps} disabled={uploading || uploadingTrain || locked}>
+                <Button icon={<UploadOutlined />} loading={uploading} disabled={uploadingTrain || locked}>
+                  上传种子
+                </Button>
+              </Upload>
+            </Tooltip>
+            <Tooltip title="已整理好的 jsonl（messages / alpaca / sharegpt）。导入后新建实验并划分验证集">
+              <Upload {...trainUploadProps} disabled={uploading || uploadingTrain || locked}>
+                <Button icon={<UploadOutlined />} loading={uploadingTrain} disabled={uploading || locked}>
+                  上传训练数据
+                </Button>
+              </Upload>
+            </Tooltip>
+            {runs.selected?.resumeHint ? (
+              <Typography.Text type="secondary">{runs.selected.resumeHint}</Typography.Text>
+            ) : null}
+          </Space>
+        }
+      >
+        <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
+          {runs.selected
+            ? `当前实验「${runs.selected.label}」。生成验证集只写入这一份（outputs/data/${runs.selected.id}/eval/），不会混进其它实验。`
+            : "点选一行作为当前实验。生成验证集、训练都会用这一份。"}
+        </Typography.Paragraph>
         <Table
           rowKey="id"
           size="small"
@@ -288,7 +384,17 @@ export default function DataPage() {
             onClick: locked ? undefined : () => void runs.select(row.id),
           })}
           columns={[
-            { title: "实验", dataIndex: "label", ellipsis: true },
+            {
+              title: "实验",
+              dataIndex: "label",
+              ellipsis: true,
+              render: (label: string, row) => (
+                <Space size={6}>
+                  {row.id === runs.selectedId ? <Tag color="blue">当前</Tag> : null}
+                  <span>{label}</span>
+                </Space>
+              ),
+            },
             {
               title: "状态",
               dataIndex: "status",
@@ -313,18 +419,8 @@ export default function DataPage() {
         />
       </Card>
 
-      <Card title="① 种子数据">
-        <Upload.Dragger {...uploadProps} disabled={uploading || locked}>
-          <p className="ant-upload-drag-icon">
-            <InboxOutlined />
-          </p>
-          <p className="ant-upload-text">把监测表拖到这里，或点击选择文件</p>
-          <p className="ant-upload-hint">Excel / CSV 需要有「错误词」「建议更正词」两列。</p>
-        </Upload.Dragger>
-      </Card>
-
       <Form form={form} layout="vertical" disabled={locked} initialValues={{ mode: "fresh" }}>
-        <Card title="② 检索来源">
+        <Card title="① 检索来源">
           <Form.Item
             name="sources"
             extra="可多选。先用第一个来源，不够再用后面的。检索不到就少写，不会编造句子。"
@@ -344,7 +440,7 @@ export default function DataPage() {
           </Form.Item>
         </Card>
 
-        <Card title="③ 生成参数">
+        <Card title="② 生成参数">
           <Row gutter={16}>
             <Col xs={24} md={8}>
               <Form.Item name="cleanRatioPct" label="混入正常样本比例（%）">
@@ -410,7 +506,7 @@ export default function DataPage() {
           </Row>
         </Card>
 
-        <Card title="④ 生成" extra={locked ? "生成进行中，参数已锁定" : undefined}>
+        <Card title="③ 生成" extra={locked ? "生成进行中，参数已锁定" : undefined}>
           <Form.Item name="mode" label="方式">
             <Radio.Group
               optionType="button"
@@ -424,27 +520,47 @@ export default function DataPage() {
           <Form.Item name="label" label="实验名称（全新 / 追加时使用）">
             <Input placeholder="例如 全量-人民网" />
           </Form.Item>
-          <Form.Item disabled={false}>
-            <Space wrap>
-              <Button type="primary" disabled={locked || !stats?.dict.exists} onClick={() => void runGenerate()}>
-                生成训练集
-              </Button>
-              <Button disabled={locked || !runs.selectedId} onClick={() => void runEvalGenerate()}>
-                生成验证集
-              </Button>
-              <ConfirmDangerButton
-                disabled={!locked}
-                onConfirm={cancel}
-                description="会立刻中断。已写入当前实验的 jsonl 会保留，下次可继续。"
-              />
-            </Space>
-          </Form.Item>
         </Card>
       </Form>
+      <Card>
+        <Space wrap>
+          <Button type="primary" disabled={locked || !stats?.dict.exists} onClick={() => void runGenerate()}>
+            生成训练集
+          </Button>
+          <Popconfirm
+            title="生成验证集"
+            description={
+              runs.selected
+                ? `写入当前实验「${runs.selected.label}」（${runs.selected.id}）的 eval/，只用这一份训练集排除泄漏。`
+                : "请先在表格中点选一个数据实验"
+            }
+            okText="生成"
+            disabled={locked || !runs.selectedId}
+            onConfirm={() => void runEvalGenerate()}
+          >
+            <Button disabled={locked || !runs.selectedId}>生成验证集</Button>
+          </Popconfirm>
+          <ConfirmDangerButton
+            disabled={!locked}
+            onConfirm={() => cancel(job.job ?? undefined)}
+            description="会立刻中断。已写入当前实验的 jsonl 会保留，下次可继续。"
+          />
+        </Space>
+        {runs.selected ? (
+          <Typography.Paragraph type="secondary" style={{ margin: "8px 0 0" }}>
+            验证集目标：{runs.selected.label}（{runs.selected.id}），训练 {runs.selected.trainRows ?? 0} 条
+            {runs.selected.evalRows ? `，已有验证 ${runs.selected.evalRows} 条` : ""}
+          </Typography.Paragraph>
+        ) : (
+          <Typography.Paragraph type="secondary" style={{ margin: "8px 0 0" }}>
+            请先点选表格中的数据实验，再生成验证集。
+          </Typography.Paragraph>
+        )}
+      </Card>
 
       {job.error && !job.busy ? <Alert type="error" showIcon message={job.error} /> : null}
 
-      <LogCard lines={job.logs} busy={job.busy} jobName={job.job} onStop={cancel} />
+      <LogCard lines={job.logs} busy={job.busy} jobName={job.job} onStop={() => cancel(job.job ?? undefined)} />
     </>
   );
 }

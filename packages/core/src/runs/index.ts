@@ -12,6 +12,7 @@ export {
   workspaceFile,
 } from "./paths.js";
 export { findLatestCheckpoint, resumeBlockedReason } from "./trainResume.js";
+export { hasLoraAdapter, resolveLoraAdapterDir } from "./adapter.js";
 export {
   appendRunLog,
   createRun,
