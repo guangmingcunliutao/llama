@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AppContext } from "../appContext.js";
+import { createRun, dataRunPaths, patchWorkspace } from "@model-training/core";
 import { persistGeneratePatch, persistLlamaFactory } from "../appContext.js";
 import { detectQuantSource } from "../datasets.js";
+import { JOB_COMMANDS } from "../jobs/commands.js";
 import { createJobDispatcher } from "../jobs/dispatcher.js";
 import { createJobHub } from "../jobs/hub.js";
 import type { JobCommand, JobHub } from "../jobs/types.js";
@@ -243,6 +245,40 @@ describe("listProviders", () => {
       name: "人民网检索",
     });
     expect(listed[0]?.description).toContain("cpc.people.com.cn");
+  });
+});
+
+describe("inferCommand", () => {
+  it("uses the selected train run's dataset even if workspace points at generating data", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mt-infer-data-"));
+    const ctx = fakeApp(dir);
+    ctx.writeConfigFile({ outDir: "./outputs" });
+    const outDir = path.join(dir, "outputs");
+    const trained = createRun(outDir, { kind: "data", mode: "fresh", label: "wx-data" });
+    fs.mkdirSync(dataRunPaths(outDir, trained.id).evalDir, { recursive: true });
+    fs.writeFileSync(dataRunPaths(outDir, trained.id).eval, `${JSON.stringify({ input: "a", output: "b" })}\n`);
+    const generating = createRun(outDir, { kind: "data", mode: "fresh", label: "ev" });
+    const train = createRun(outDir, {
+      kind: "train",
+      mode: "fresh",
+      label: "wx",
+      extra: { dataRunId: trained.id },
+    });
+    patchWorkspace(outDir, { dataRunId: generating.id, trainRunId: train.id });
+    const infer = JOB_COMMANDS.find((command) => command.name === "infer");
+    expect(infer).toBeDefined();
+    const ok = await infer!.validate(ctx, {
+      trainRunId: train.id,
+      backend: "rule",
+      baseline: true,
+    });
+    expect(ok).toBeNull();
+    const missing = await infer!.validate(ctx, {
+      dataRunId: generating.id,
+      backend: "rule",
+      baseline: true,
+    });
+    expect(missing).toContain(generating.id);
   });
 });
 

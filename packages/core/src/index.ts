@@ -21,6 +21,7 @@ export {
   readRun,
   requireDataRun,
   requireTrainRun,
+  resolveEvalDataRunId,
   selectRun,
   summarizeRun,
   tailLog,

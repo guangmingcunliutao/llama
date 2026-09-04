@@ -19,6 +19,18 @@ export default function EvalPage() {
   const trainRuns = useRuns("train");
   const [form] = Form.useForm();
   const [metrics, setMetrics] = useState<Record<string, unknown> | null>(null);
+  const trainRunId = Form.useWatch("trainRunId", form) as string | undefined;
+  const selectedTrain = trainRuns.rows.find((row) => row.id === trainRunId);
+
+  function evalBody(extra: Record<string, unknown> = {}): Record<string, unknown> {
+    const id = String(form.getFieldValue("trainRunId") ?? trainRuns.selectedId ?? "").trim();
+    const row = trainRuns.rows.find((item) => item.id === id);
+    return {
+      trainRunId: id || undefined,
+      dataRunId: row?.dataRunId || undefined,
+      ...extra,
+    };
+  }
 
   useEffect(() => {
     void (async () => {
@@ -35,16 +47,12 @@ export default function EvalPage() {
   }, [form, job.busy, trainRuns.selectedId, trainRuns.rows]);
 
   async function runModelEval(): Promise<void> {
-    const trainRunId = String(form.getFieldValue("trainRunId") ?? trainRuns.selectedId ?? "").trim();
-    if (!trainRunId) {
+    const id = String(form.getFieldValue("trainRunId") ?? trainRuns.selectedId ?? "").trim();
+    if (!id) {
       message.warning("请选择一次训练实验");
       return;
     }
-    await start("/api/jobs/infer", {
-      backend: "llamafactory",
-      trainRunId,
-      all: true,
-    });
+    await start("/api/jobs/infer", evalBody({ backend: "llamafactory", all: true }));
   }
 
   return (
@@ -57,7 +65,15 @@ export default function EvalPage() {
       {job.error && !job.busy ? <Alert type="error" showIcon message={job.error} /> : null}
       <Card title="训练模型">
         <Form form={form} layout="vertical" disabled={job.busy}>
-          <Form.Item name="trainRunId" label="训练实验" extra="目录里有 adapter 的实验才能评估。">
+          <Form.Item
+            name="trainRunId"
+            label="训练实验"
+            extra={
+              selectedTrain?.dataRunId
+                ? `目录里有 adapter 的实验才能评估。验证集用这次训练绑定的数据实验 ${selectedTrain.dataRunId}，与正在生成的新数据无关。`
+                : "目录里有 adapter 的实验才能评估。验证集跟所选训练实验走，不跟正在准备的新数据走。"
+            }
+          >
             <Select
               placeholder="选择训练实验"
               options={trainRuns.rows.map((row) => ({
@@ -95,14 +111,14 @@ export default function EvalPage() {
                     <Button
                       htmlType="button"
                       disabled={job.busy}
-                      onClick={() => void start("/api/jobs/evaluate")}
+                      onClick={() => void start("/api/jobs/evaluate", evalBody())}
                     >
                       已有预测时仅打分
                     </Button>
                     <Button
                       htmlType="button"
                       disabled={job.busy}
-                      onClick={() => void start("/api/jobs/infer", { backend: "rule", baseline: true, all: true })}
+                      onClick={() => void start("/api/jobs/infer", evalBody({ backend: "rule", baseline: true, all: true }))}
                     >
                       规则上界（对照）
                     </Button>

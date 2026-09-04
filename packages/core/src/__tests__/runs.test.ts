@@ -3,7 +3,15 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { fingerprintValue } from "../runs/fingerprint.js";
-import { createRun, listRuns, loadWorkspace, patchWorkspace, summarizeRun } from "../runs/store.js";
+import {
+  createRun,
+  listRuns,
+  loadWorkspace,
+  patchWorkspace,
+  resolveEvalDataRunId,
+  summarizeRun,
+  writeTrainParams,
+} from "../runs/store.js";
 import { resumeBlockedReason } from "../runs/trainResume.js";
 import { hasLoraAdapter, resolveLoraAdapterDir } from "../runs/adapter.js";
 
@@ -30,6 +38,28 @@ describe("runs store", () => {
     expect(resumeBlockedReason({ learning_rate: "1e-4" }, { learning_rate: "1e-4" })).toBeNull();
     expect(resumeBlockedReason({ num_train_epochs: 1 }, { num_train_epochs: 1.0 })).toBeNull();
     expect(resumeBlockedReason({ learning_rate: "1.0e-4" }, { learning_rate: 0.0001 })).toBeNull();
+  });
+
+  it("resolves eval gold from the train run, not the generating data pointer", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mt-eval-data-"));
+    const trained = createRun(dir, { kind: "data", mode: "fresh", label: "wx-data" });
+    const generating = createRun(dir, { kind: "data", mode: "fresh", label: "ev" });
+    const train = createRun(dir, {
+      kind: "train",
+      mode: "fresh",
+      label: "wx",
+      extra: { dataRunId: trained.id },
+    });
+    writeTrainParams(dir, train.id, {
+      knobs: {},
+      dataRunId: trained.id,
+      dataFingerprint: "fp",
+      parentId: null,
+    });
+    patchWorkspace(dir, { dataRunId: generating.id, trainRunId: train.id });
+    expect(resolveEvalDataRunId(dir, { trainRunId: train.id })).toBe(trained.id);
+    expect(resolveEvalDataRunId(dir, {})).toBe(trained.id);
+    expect(resolveEvalDataRunId(dir, { dataRunId: generating.id })).toBe(generating.id);
   });
 });
 

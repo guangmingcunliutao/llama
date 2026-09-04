@@ -29,6 +29,7 @@ export {
   readTrainParams,
   requireDataRun,
   requireTrainRun,
+  resolveEvalDataRunId,
   saveWorkspace,
   selectRun,
   summarizeRun,

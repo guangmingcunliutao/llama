@@ -26,6 +26,7 @@ import {
   quantizeSource,
   readRun,
   requireDataRun,
+  resolveEvalDataRunId,
   startTrainFromConfig,
   summarizeRun,
   trainRunPaths,
@@ -173,20 +174,36 @@ function inferJobBackend(body: Record<string, unknown>): string {
   return "llamafactory";
 }
 
+/** 评估跟所选训练实验走，不要误用工作区里正在生成的新数据。 */
+function evalJobRuns(outDir: string, body: Record<string, unknown>) {
+  const ws = loadWorkspace(outDir);
+  const trainId = asFlag(body.trainRunId) ?? ws.trainRunId;
+  const dataId = resolveEvalDataRunId(outDir, {
+    dataRunId: asFlag(body.dataRunId),
+    trainRunId: trainId,
+  });
+  return { ws, trainId, dataId };
+}
+
+function missingEvalGold(outDir: string, dataId: string | null): string | null {
+  try {
+    const data = requireDataRun(outDir, dataId);
+    if (!hasEvalGold(data.paths)) {
+      return `没有验证集 ${data.paths.eval}，请先在「数据生成」页对该次训练用的数据生成验证集`;
+    }
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err);
+  }
+  return null;
+}
+
 const inferCommand: JobCommand = {
   name: "infer",
   async validate(app, body) {
     const cfg = await loadUserConfig({ command: "infer", cwd: app.dataRoot() });
-    const ws = loadWorkspace(cfg.outDir);
-    const dataId = asFlag(body.dataRunId) ?? ws.dataRunId;
-    try {
-      const data = requireDataRun(cfg.outDir, dataId);
-      if (!hasEvalGold(data.paths)) {
-        return `没有验证集 ${data.paths.eval}，请先在「数据生成」页生成验证集`;
-      }
-    } catch (err) {
-      return err instanceof Error ? err.message : String(err);
-    }
+    const { dataId } = evalJobRuns(cfg.outDir, body);
+    const missing = missingEvalGold(cfg.outDir, dataId);
+    if (missing) return missing;
     const backend = inferJobBackend(body);
     if (backend === "llamafactory") {
       const detect = detectLlamaFactory({
@@ -209,9 +226,8 @@ const inferCommand: JobCommand = {
       infer: { ...prevInfer, backend },
     });
     const latest0 = await loadUserConfig({ command: "infer", cwd: app.dataRoot() });
-    const ws = loadWorkspace(latest0.outDir);
-    const trainId = asFlag(body.trainRunId) ?? ws.trainRunId;
-    const dataId = asFlag(body.dataRunId) ?? ws.dataRunId;
+    const { ws, trainId, dataId } = evalJobRuns(latest0.outDir, body);
+    let evalRunId = ws.evalRunId;
     if (trainId) {
       const evalRun = createRun(latest0.outDir, {
         kind: "eval",
@@ -219,15 +235,22 @@ const inferCommand: JobCommand = {
         label: asFlag(body.label) || "eval",
         extra: { trainRunId: trainId, dataRunId: dataId },
       });
+      evalRunId = evalRun.id;
       patchWorkspace(latest0.outDir, {
         evalRunId: evalRun.id,
         trainRunId: trainId,
-        dataRunId: dataId ?? ws.dataRunId,
       });
     }
     const adapter =
       asFlag(body.adapter) || (trainId ? trainRunPaths(latest0.outDir, trainId).ckpt : undefined);
-    const cfg = await loadUserConfig({ command: "infer", cwd: app.dataRoot() });
+    const cfg = await loadUserConfig({
+      command: "infer",
+      cwd: app.dataRoot(),
+      dataRunId: dataId,
+      trainRunId: trainId,
+      evalRunId,
+    });
+    job.onLog(`[infer] train=${trainId ?? "—"} data=${dataId ?? "—"} eval=${evalRunId ?? "—"}`);
     let inferErr: unknown = null;
     try {
       await infer(cfg, {
@@ -259,40 +282,40 @@ const inferCommand: JobCommand = {
 
 const evaluateCommand: JobCommand = {
   name: "evaluate",
-  async validate(app) {
+  async validate(app, body) {
     const cfg = await loadUserConfig({ command: "evaluate", cwd: app.dataRoot() });
-    const ws = loadWorkspace(cfg.outDir);
-    try {
-      const data = requireDataRun(cfg.outDir, ws.dataRunId);
-      if (!hasEvalGold(data.paths)) {
-        return `没有验证集 ${data.paths.eval}，请先在「数据生成」页生成验证集`;
-      }
-    } catch (err) {
-      return err instanceof Error ? err.message : String(err);
-    }
+    const { ws, trainId, dataId } = evalJobRuns(cfg.outDir, body);
+    const missing = missingEvalGold(cfg.outDir, dataId);
+    if (missing) return missing;
     const predId = findEvalRunWithPred(cfg.outDir, {
       preferId: ws.evalRunId,
-      dataRunId: ws.dataRunId,
-      trainRunId: ws.trainRunId,
+      dataRunId: dataId,
+      trainRunId: trainId,
     });
     if (!predId) {
       return "当前没有预测文件。请先点「开始评估」生成预测，或点「规则上界」对照。";
     }
     return null;
   },
-  async execute(app, job) {
+  async execute(app, job, body) {
     const latest0 = await loadUserConfig({ command: "evaluate", cwd: app.dataRoot() });
-    const ws = loadWorkspace(latest0.outDir);
+    const { ws, trainId, dataId } = evalJobRuns(latest0.outDir, body);
     const predId = findEvalRunWithPred(latest0.outDir, {
       preferId: ws.evalRunId,
-      dataRunId: ws.dataRunId,
-      trainRunId: ws.trainRunId,
+      dataRunId: dataId,
+      trainRunId: trainId,
     });
     if (predId && predId !== ws.evalRunId) {
       patchWorkspace(latest0.outDir, { evalRunId: predId });
       job.onLog(`[evaluate] 当前评估实验没有预测，改用 ${predId}`);
     }
-    const latest = await loadUserConfig({ command: "evaluate", cwd: app.dataRoot() });
+    const latest = await loadUserConfig({
+      command: "evaluate",
+      cwd: app.dataRoot(),
+      dataRunId: dataId,
+      trainRunId: trainId,
+      evalRunId: predId ?? ws.evalRunId,
+    });
     evaluate(latest, { all: true });
   },
 };

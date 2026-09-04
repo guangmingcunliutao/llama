@@ -1,7 +1,8 @@
 /**
  * 从监测 Excel 洗出错误词/正确词字典（前置数据）。
  *
- * 过滤：拆开单元格里挤在一起的多词、去掉空值和自己改自己、正词至少 3 字、去重并按频次合并。
+ * 一行就是一对完整短句，单元格里的顿号、分号不拆开。
+ * 去掉空值和自己改自己、正词至少 3 字、去重并按频次合并。
  */
 import fs from "node:fs";
 import { createRequire } from "node:module";
@@ -17,8 +18,6 @@ const COL = {
   wrong: "错误词",
   correct: "建议更正词",
 } as const;
-
-const SPLIT = /[\r\n]+|[、；;，,]+/;
 
 export interface PrepareDictFlags {
   input?: string;
@@ -41,23 +40,11 @@ export interface PrepareDictReport {
   dropped_short: number;
 }
 
-function splitCell(value: unknown): string[] {
-  if (value == null) return [];
-  return String(value)
-    .split(SPLIT)
-    .map((part) => part.trim())
-    .filter(Boolean);
-}
-
-/** 一对多时广播到同一个对应词；两侧都是多个且数量相同则按位置对齐。 */
-function expandPair(wrongCell: unknown, correctCell: unknown): Array<[string, string]> {
-  const wrongs = splitCell(wrongCell);
-  const corrects = splitCell(correctCell);
-  if (!wrongs.length || !corrects.length) return [];
-  if (corrects.length === 1) return wrongs.map((w) => [w, corrects[0]!]);
-  if (wrongs.length === 1) return corrects.map((c) => [wrongs[0]!, c]);
-  const n = Math.min(wrongs.length, corrects.length);
-  return Array.from({ length: n }, (_, i) => [wrongs[i]!, corrects[i]!]);
+/** 整格当作一条短语：去掉首尾空白和格内换行，不按顿号拆开。 */
+export function cellText(value: unknown): string {
+  return String(value ?? "")
+    .replace(/[\r\n]+/g, "")
+    .trim();
 }
 
 function headerIndex(header: unknown[]): Record<string, number> {
@@ -114,35 +101,30 @@ export function prepareDict(flags: PrepareDictFlags = {}, cwd = process.cwd()): 
   for (const row of table.slice(1)) {
     if (!row || row.every((cell) => cell == null || String(cell).trim() === "")) continue;
     rawRows += 1;
-    const errorType = (iType != null ? splitCell(row[iType])[0] : "") || "固定表述错误";
-    const pairs = expandPair(row[iWrong], row[iCorrect]);
-    if (!pairs.length) {
+    const errorType = (iType != null ? cellText(row[iType]) : "") || "固定表述错误";
+    const wrong = cellText(row[iWrong]);
+    const correct = cellText(row[iCorrect]);
+    if (!wrong || !correct) {
       droppedEmpty += 1;
       continue;
     }
-    for (const [wrong, correct] of pairs) {
-      expanded += 1;
-      if (!wrong || !correct) {
-        droppedEmpty += 1;
-        continue;
-      }
-      if (wrong === correct) {
-        droppedSame += 1;
-        continue;
-      }
-      if (correct.length < minCorrectLen || wrong.length < 2) {
-        droppedShort += 1;
-        continue;
-      }
-      if (/https?:\/\//i.test(wrong) || /https?:\/\//i.test(correct)) {
-        droppedEmpty += 1;
-        continue;
-      }
-      const key = `${wrong}\t${correct}\t${errorType}`;
-      const prev = merged.get(key);
-      if (prev) prev.freq += 1;
-      else merged.set(key, { wrong, correct, error_type: errorType, freq: 1 });
+    expanded += 1;
+    if (wrong === correct) {
+      droppedSame += 1;
+      continue;
     }
+    if (correct.length < minCorrectLen || wrong.length < 2) {
+      droppedShort += 1;
+      continue;
+    }
+    if (/https?:\/\//i.test(wrong) || /https?:\/\//i.test(correct)) {
+      droppedEmpty += 1;
+      continue;
+    }
+    const key = `${wrong}\t${correct}\t${errorType}`;
+    const prev = merged.get(key);
+    if (prev) prev.freq += 1;
+    else merged.set(key, { wrong, correct, error_type: errorType, freq: 1 });
   }
 
   const pairs = [...merged.values()].sort(

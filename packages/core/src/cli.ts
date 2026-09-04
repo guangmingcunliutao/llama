@@ -65,7 +65,7 @@ const HELP: Record<string, string> = {
 `,
   prepare: `prepare — 从监测 Excel 洗出 term_pairs.jsonl
 
-按「错误词 / 建议更正词」拆格、去重、合并频次。正词短于 3 字、错词正词相同的行会丢掉。
+一行一对完整短句，单元格里的顿号不拆开。去重、合并频次。正词短于 3 字、错词正词相同的行会丢掉。
 
 选项:
   --input <file>           Excel 路径（必填）

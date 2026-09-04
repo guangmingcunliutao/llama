@@ -272,6 +272,16 @@ export interface LoadUserConfigOptions {
   command: string;
   config?: string;
   cwd?: string;
+  /** 覆盖 workspace.json 里的当前数据 / 训练 / 评估实验，评估时不要误用正在生成的新数据。 */
+  dataRunId?: string | null;
+  trainRunId?: string | null;
+  evalRunId?: string | null;
+}
+
+function pickRunId(override: string | null | undefined, fallback: string | null): string | null {
+  if (override === undefined) return fallback;
+  const trimmed = override?.trim();
+  return trimmed || null;
 }
 
 /**
@@ -315,9 +325,12 @@ export async function loadUserConfig(opts: LoadUserConfigOptions): Promise<Resol
 
   const dict = resolveFrom(root, cfg.dict || cfg.dict_path);
   const workspace = loadWorkspace(outDir);
-  const dataP = workspace.dataRunId ? dataRunPaths(outDir, workspace.dataRunId) : unselectedDataPaths(outDir);
-  const trainP = workspace.trainRunId ? trainRunPaths(outDir, workspace.trainRunId) : unselectedTrainPaths(outDir);
-  const evalP = workspace.evalRunId ? evalRunPaths(outDir, workspace.evalRunId) : unselectedEvalPaths(outDir);
+  const dataId = pickRunId(opts.dataRunId, workspace.dataRunId);
+  const trainId = pickRunId(opts.trainRunId, workspace.trainRunId);
+  const evalId = pickRunId(opts.evalRunId, workspace.evalRunId);
+  const dataP = dataId ? dataRunPaths(outDir, dataId) : unselectedDataPaths(outDir);
+  const trainP = trainId ? trainRunPaths(outDir, trainId) : unselectedTrainPaths(outDir);
+  const evalP = evalId ? evalRunPaths(outDir, evalId) : unselectedEvalPaths(outDir);
   const trainConfig = trainP.yaml;
   const trainOutputDir = trainP.ckpt;
   const importSource = resolveFrom(root, cfg.import?.source ?? cfg.importSource);

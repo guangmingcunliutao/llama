@@ -350,6 +350,24 @@ export function selectRun(outDir: string, kind: RunKind, id: string): WorkspaceP
   return patchWorkspace(outDir, { evalRunId: id });
 }
 
+/** 评估用验证集：显式 data > 训练实验记下的 data > 工作区当前 data。 */
+export function resolveEvalDataRunId(
+  outDir: string,
+  flags: { dataRunId?: string | null; trainRunId?: string | null } = {},
+): string | null {
+  const explicit = flags.dataRunId?.trim();
+  if (explicit) return explicit;
+  const ws = loadWorkspace(outDir);
+  const trainId = flags.trainRunId?.trim() || ws.trainRunId;
+  if (trainId) {
+    const fromMeta = readRun(outDir, "train", trainId)?.dataRunId?.trim();
+    if (fromMeta) return fromMeta;
+    const fromParams = readTrainParams(outDir, trainId)?.dataRunId?.trim();
+    if (fromParams) return fromParams;
+  }
+  return ws.dataRunId;
+}
+
 export function requireDataRun(outDir: string, id: string | null | undefined): { meta: RunMeta; paths: DataRunPaths } {
   if (!id) throw new Error("没有选中的数据实验，请先生成数据");
   const meta = readRun(outDir, "data", id);
