@@ -40,3 +40,18 @@ export function writeJsonl(file: string, rows: unknown[]): void {
   const body = rows.map((row) => JSON.stringify(row)).join("\n");
   fs.writeFileSync(file, body + (rows.length ? "\n" : ""), "utf8");
 }
+
+/** 读 jsonl，跳过截断的最后一行（评估中断时 LlamaFactory 可能写出半行）。 */
+export function readJsonlLenient<T>(file: string): T[] {
+  if (!fs.existsSync(file)) return [];
+  const rows: T[] = [];
+  for (const line of fs.readFileSync(file, "utf8").split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    try {
+      rows.push(JSON.parse(line) as T);
+    } catch {
+      /* ignore truncated line */
+    }
+  }
+  return rows;
+}

@@ -11,7 +11,11 @@ export {
   unselectedTrainPaths,
   workspaceFile,
 } from "./paths.js";
-export { findLatestCheckpoint, resumeBlockedReason } from "./trainResume.js";
+export {
+  findLatestCheckpoint,
+  resumeBlockedReason,
+} from "./trainResume.js";
+export { parseEvalMode, resolveEvalSession } from "./evalSession.js";
 export { hasLoraAdapter, resolveLoraAdapterDir } from "./adapter.js";
 export {
   appendRunLog,

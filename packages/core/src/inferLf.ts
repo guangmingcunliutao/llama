@@ -12,8 +12,9 @@ import {
   trainSpawnSpec,
 } from "./llamaFactoryEnv.js";
 import { parseTrainYaml, yamlScalar } from "./trainYaml.js";
+import { readJsonlLenient, readJsonOrJsonl, writeJsonl } from "./jsonl.js";
+import { mergePreds, positionalPreds, readPreds, withStableIds } from "./evalResume.js";
 import type { InferFlags, PredictionRow, ResolvedConfig, SftExample } from "./types.js";
-import { readJsonOrJsonl, writeJsonl } from "./jsonl.js";
 
 export function looksLikeLoraAdapter(dir: string): boolean {
   try {
@@ -174,17 +175,48 @@ async function runPredictYaml(
   });
 }
 
+function readLfPredRows(dir: string): Array<{ predict?: string; prediction?: string }> {
+  const gen = findGeneratedPreds(dir);
+  if (!gen) return [];
+  return readJsonlLenient<{ predict?: string; prediction?: string }>(gen);
+}
+
 export async function inferLlamaFactorySlice(
   cfg: ResolvedConfig,
   goldFile: string,
   predFile: string,
   flags: InferFlags,
+  resume?: { golds: SftExample[]; existing: PredictionRow[]; remaining: SftExample[] },
 ): Promise<string> {
-  const golds = readJsonOrJsonl<SftExample>(goldFile);
+  const golds = resume?.golds ?? withStableIds(readJsonOrJsonl<SftExample>(goldFile));
   if (!golds.length) throw new Error(`评估集为空: ${goldFile}`);
+  let existing = resume?.existing ?? readPreds(predFile);
+  const remaining = resume?.remaining ?? golds.filter((row) => !existing.some((p) => String(p.id) === String(row.id)));
+  const onLog = flags.onLog ?? ((line: string) => console.log(line));
+
+  if (!remaining.length) {
+    writeJsonl(predFile, mergePreds(golds, existing));
+    onLog(`[infer] 跳过已完成切片 n=${golds.length} -> ${predFile}`);
+    return predFile;
+  }
+
+  if (!existing.length) {
+    const leftover = readLfPredRows(cfg.paths.lfPredict);
+    if (leftover.length) {
+      existing = positionalPreds(golds, leftover);
+      writeJsonl(predFile, mergePreds(golds, existing));
+      onLog(`[infer] 回收中断预测 ${existing.length}/${golds.length}`);
+    }
+  }
+  const stillMissing = remaining.filter((row) => !existing.some((p) => String(p.id) === String(row.id)));
+  if (!stillMissing.length) {
+    writeJsonl(predFile, mergePreds(golds, existing));
+    return predFile;
+  }
+
   const datasetDir = cfg.paths.evalLf;
   const evalCopy = path.join(datasetDir, "term_eval.jsonl");
-  writeJsonl(evalCopy, golds);
+  writeJsonl(evalCopy, stillMissing);
   upsertDatasetEntry(datasetDir, "term_eval", evalCopy);
 
   const yamlPath = cfg.trainConfig;
@@ -215,17 +247,29 @@ export async function inferLlamaFactorySlice(
     outputDir: outDir,
     cutoffLen: Number(knobs.cutoff_len ?? 1024) || 1024,
   });
-  const onLog = flags.onLog ?? ((line: string) => console.log(line));
-  onLog(`[infer] LlamaFactory 预测 n=${golds.length} gold=${goldFile}`);
+  onLog(`[infer] LlamaFactory 预测 remaining=${stillMissing.length}/${golds.length} gold=${goldFile}`);
   if (lora) onLog(`[infer] LoRA: ${adapterDir}`);
   else onLog(`[infer] 未找到 adapter，将按完整模型加载: ${model}`);
-  await runPredictYaml(cfg, predictYaml, flags);
+  const persistPartial = (): void => {
+    const lfRows = readLfPredRows(outDir);
+    if (!lfRows.length) return;
+    const partial = positionalPreds(stillMissing, lfRows);
+    writeJsonl(predFile, mergePreds(golds, existing, partial));
+    onLog(`[infer] 已保存部分预测 ${partial.length}/${stillMissing.length}`);
+  };
+  try {
+    await runPredictYaml(cfg, predictYaml, flags);
+  } catch (err) {
+    persistPartial();
+    throw err;
+  }
   const gen = findGeneratedPreds(outDir);
   if (!gen) {
+    persistPartial();
     throw new Error(`预测完成但没有 generated_predictions.jsonl（目录 ${outDir}）`);
   }
-  const lfRows = readJsonOrJsonl<{ predict?: string; prediction?: string }>(gen);
-  writeJsonl(predFile, lfPredsToRows(golds, lfRows));
-  onLog(`[infer] backend=llamafactory n=${golds.length} -> ${predFile}`);
+  const lfRows = readJsonlLenient<{ predict?: string; prediction?: string }>(gen);
+  writeJsonl(predFile, mergePreds(golds, existing, positionalPreds(stillMissing, lfRows)));
+  onLog(`[infer] backend=llamafactory n=${golds.length} wrote=${stillMissing.length} -> ${predFile}`);
   return predFile;
 }

@@ -5,7 +5,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node dist/main.js",
-    "dev": "tsx watch --include ../core/dist/**/*.js src/main.ts",
+    "dev": "tsx watch --exclude ../core/dist --exclude ../core/dist/** src/main.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

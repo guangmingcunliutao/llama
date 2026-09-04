@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { evalCanResume, evalRunProgress } from "../evalResume.js";
 import { countJsonl } from "../jsonl.js";
 import { pidAlive } from "../killTree.js";
 import { isRecord } from "../util.js";
@@ -274,7 +275,10 @@ export function summarizeRun(outDir: string, meta: RunMeta): RunSummary {
     canResume = resume.ok;
     resumeHint = resume.hint;
   } else {
-    resumeHint = "评估不提供样本级续跑";
+    const resume = evalCanResume(outDir, live);
+    canResume = resume.ok;
+    resumeHint = resume.hint;
+    evalRows = evalRunProgress(outDir, live).doneGold;
   }
 
   return {

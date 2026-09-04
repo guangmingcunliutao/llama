@@ -5,7 +5,6 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   analyze,
-  createRun,
   detectLlamaFactory,
   detectQuantTools,
   evaluate,
@@ -18,15 +17,18 @@ import {
   hasEvalGold,
   infer,
   installLlamaFactory,
+  isJobCancelled,
   loadUserConfig,
   loadWorkspace,
   locateInstallScript,
   looksLikeLlamaFactoryHome,
+  patchRun,
   patchWorkspace,
   quantizeSource,
   readRun,
   requireDataRun,
   resolveEvalDataRunId,
+  resolveEvalSession,
   startTrainFromConfig,
   summarizeRun,
   trainRunPaths,
@@ -201,9 +203,21 @@ const inferCommand: JobCommand = {
   name: "infer",
   async validate(app, body) {
     const cfg = await loadUserConfig({ command: "infer", cwd: app.dataRoot() });
-    const { dataId } = evalJobRuns(cfg.outDir, body);
+    const { dataId, trainId } = evalJobRuns(cfg.outDir, body);
     const missing = missingEvalGold(cfg.outDir, dataId);
     if (missing) return missing;
+    const mode = asFlag(body.mode);
+    if (mode === "resume") {
+      const id = asFlag(body.runId) ?? loadWorkspace(cfg.outDir).evalRunId;
+      if (!id) return "没有可继续的评估实验";
+      const meta = readRun(cfg.outDir, "eval", id);
+      if (!meta) return `找不到评估实验 ${id}`;
+      const live = summarizeRun(cfg.outDir, meta);
+      if (!live.canResume) return live.resumeHint || "该评估不能续跑";
+      if (trainId && meta.trainRunId && trainId !== meta.trainRunId) {
+        return `该评估属于训练 ${meta.trainRunId}，与当前选择不一致。请改选对应训练，或全新评估。`;
+      }
+    }
     const backend = inferJobBackend(body);
     if (backend === "llamafactory") {
       const detect = detectLlamaFactory({
@@ -226,20 +240,17 @@ const inferCommand: JobCommand = {
       infer: { ...prevInfer, backend },
     });
     const latest0 = await loadUserConfig({ command: "infer", cwd: app.dataRoot() });
-    const { ws, trainId, dataId } = evalJobRuns(latest0.outDir, body);
-    let evalRunId = ws.evalRunId;
-    if (trainId) {
-      const evalRun = createRun(latest0.outDir, {
-        kind: "eval",
-        mode: "fresh",
-        label: asFlag(body.label) || "eval",
-        extra: { trainRunId: trainId, dataRunId: dataId },
-      });
-      evalRunId = evalRun.id;
-      patchWorkspace(latest0.outDir, {
-        evalRunId: evalRun.id,
+    const { trainId, dataId } = evalJobRuns(latest0.outDir, body);
+    let evalRunId = loadWorkspace(latest0.outDir).evalRunId;
+    if (trainId || asFlag(body.mode) === "resume" || asFlag(body.runId)) {
+      const session = resolveEvalSession(latest0.outDir, {
+        mode: asFlag(body.mode),
+        runId: asFlag(body.runId),
         trainRunId: trainId,
+        dataRunId: dataId,
+        label: asFlag(body.label),
       });
+      evalRunId = session.meta.id;
     }
     const adapter =
       asFlag(body.adapter) || (trainId ? trainRunPaths(latest0.outDir, trainId).ckpt : undefined);
@@ -250,7 +261,12 @@ const inferCommand: JobCommand = {
       trainRunId: trainId,
       evalRunId,
     });
-    job.onLog(`[infer] train=${trainId ?? "—"} data=${dataId ?? "—"} eval=${evalRunId ?? "—"}`);
+    if (evalRunId) {
+      patchRun(latest0.outDir, "eval", evalRunId, { status: "running", pid: process.pid, error: null });
+    }
+    job.onLog(
+      `[infer] mode=${asFlag(body.mode) ?? "fresh"} train=${trainId ?? "—"} data=${dataId ?? "—"} eval=${evalRunId ?? "—"}`,
+    );
     let inferErr: unknown = null;
     try {
       await infer(cfg, {
@@ -273,10 +289,31 @@ const inferCommand: JobCommand = {
       evaluate(cfg, { all: true });
       job.onLog("[infer] 已根据预测计算指标（reports/metrics.json）");
     } catch (evalErr) {
+      if (evalRunId) {
+        patchRun(latest0.outDir, "eval", evalRunId, {
+          status: inferErr && isJobCancelled(inferErr) ? "interrupted" : "failed",
+          pid: null,
+          error: inferErr instanceof Error ? inferErr.message : inferErr ? String(inferErr) : evalErr instanceof Error ? evalErr.message : String(evalErr),
+          exitCode: inferErr && isJobCancelled(inferErr) ? 130 : 1,
+        });
+      }
       if (inferErr) throw inferErr;
       throw evalErr;
     }
-    if (inferErr) throw inferErr;
+    if (inferErr) {
+      if (evalRunId) {
+        patchRun(latest0.outDir, "eval", evalRunId, {
+          status: isJobCancelled(inferErr) ? "interrupted" : "failed",
+          pid: null,
+          error: isJobCancelled(inferErr) ? null : inferErr instanceof Error ? inferErr.message : String(inferErr),
+          exitCode: isJobCancelled(inferErr) ? 130 : 1,
+        });
+      }
+      throw inferErr;
+    }
+    if (evalRunId) {
+      patchRun(latest0.outDir, "eval", evalRunId, { status: "completed", pid: null, exitCode: 0, error: null });
+    }
   },
 };
 

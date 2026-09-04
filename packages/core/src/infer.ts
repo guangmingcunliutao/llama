@@ -6,6 +6,8 @@
  * file：只把样本落到 pred 路径。
  */
 import fs from "node:fs";
+import { throwIfAborted } from "./abort.js";
+import { missingGolds, mergePreds, readPreds, withStableIds, isSliceComplete } from "./evalResume.js";
 import { ensureEvalGold, listEvalSlices } from "./evaluate.js";
 import { countJsonl, readJsonOrJsonl, writeJsonl } from "./jsonl.js";
 import type { InferBackend, InferFlags, PredictionRow, ResolvedConfig, SftExample } from "./types.js";
@@ -65,10 +67,18 @@ async function inferFile(
   backend: InferBackend,
   flags: InferFlags,
 ): Promise<string> {
-  const samples = readJsonOrJsonl<SftExample>(input);
+  const samples = withStableIds(readJsonOrJsonl<SftExample>(input));
+  const existing = readPreds(output);
+  if (isSliceComplete(samples, existing)) {
+    const onLog = flags.onLog ?? ((line: string) => console.log(line));
+    onLog(`[infer] 跳过已完成切片 n=${samples.length} -> ${output}`);
+    return output;
+  }
+  const remaining = missingGolds(samples, existing);
+  throwIfAborted(flags.signal);
 
   if (backend === "llamafactory") {
-    return inferLlamaFactorySlice(cfg, input, output, flags);
+    return inferLlamaFactorySlice(cfg, input, output, flags, { golds: samples, existing, remaining });
   }
 
   if (backend === "file") {
@@ -77,13 +87,13 @@ async function inferFile(
     return output;
   }
 
-  const preds: PredictionRow[] = [];
+  const preds: PredictionRow[] = [...existing];
   if (backend === "rule") {
     console.log(
       "[infer] 规则基线：按词对把错词换成正词，不加载训练模型。要用 LoRA/基座请把后端改成 LlamaFactory。",
     );
-    for (const [i, g] of samples.entries()) {
-      preds.push({ id: g.id ?? i, pred: rulePred(g) });
+    for (const g of remaining) {
+      preds.push({ id: g.id ?? "", pred: rulePred(g) });
     }
   } else {
     const url = flags.url || cfg.infer.http?.url;
@@ -91,14 +101,15 @@ async function inferFile(
     const envName = cfg.infer.http?.apiKeyEnv || cfg.infer.http?.api_key_env || "OPENAI_API_KEY";
     const apiKey = process.env[envName] || "";
     if (!url) throw new Error("http 推理需要配置 infer.http.url");
-    for (const [i, g] of samples.entries()) {
+    for (const g of remaining) {
+      throwIfAborted(flags.signal);
       const pred = await httpPred(g, url, model, apiKey);
-      preds.push({ id: g.id ?? i, pred });
+      preds.push({ id: g.id ?? "", pred });
     }
   }
 
-  writeJsonl(output, preds);
-  console.log(`[infer] backend=${backend} n=${preds.length} -> ${output}`);
+  writeJsonl(output, mergePreds(samples, preds));
+  console.log(`[infer] backend=${backend} n=${samples.length} wrote=${remaining.length} -> ${output}`);
   return output;
 }
 
@@ -109,6 +120,7 @@ export async function infer(cfg: ResolvedConfig, flags: InferFlags = {}): Promis
     ensureEvalGold(cfg.paths);
     const paths: string[] = [];
     for (const slice of listEvalSlices(cfg)) {
+      throwIfAborted(flags.signal);
       if (!fs.existsSync(slice.gold) || countJsonl(slice.gold) === 0) continue;
       paths.push(await inferFile(cfg, slice.gold, slice.pred, backend, flags));
     }
