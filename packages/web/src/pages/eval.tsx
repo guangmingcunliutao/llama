@@ -4,6 +4,7 @@ import { App as AntdApp } from "antd";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useJob } from "../jobs/JobContext";
+import { formatRunTime } from "../runs/format";
 import { useRuns } from "../runs/useRuns";
 import { ConfirmDangerButton } from "../ui/ConfirmDangerButton";
 import { LogCard } from "../ui/LogCard";
@@ -140,6 +141,7 @@ export default function EvalPage() {
               render: (status: string) => <Tag color={STATUS_COLOR[status] ?? "default"}>{status}</Tag>,
             },
             { title: "已预测", dataIndex: "evalRows", width: 80, render: (v: number | undefined) => v ?? 0 },
+            { title: "更新", dataIndex: "updatedAt", width: 180, render: (v: string) => formatRunTime(v) },
             {
               title: "",
               width: 70,

@@ -26,6 +26,7 @@ import type { UploadProps } from "antd";
 import { App as AntdApp } from "antd";
 import { useCallback, useEffect, useState } from "react";
 import { useJob } from "../jobs/JobContext";
+import { formatRunTime } from "../runs/format";
 import { useRuns } from "../runs/useRuns";
 import { ConfirmDangerButton } from "../ui/ConfirmDangerButton";
 import { LogCard } from "../ui/LogCard";
@@ -403,7 +404,7 @@ export default function DataPage() {
             },
             { title: "训练条数", dataIndex: "trainRows", width: 90 },
             { title: "验证条数", dataIndex: "evalRows", width: 90 },
-            { title: "更新", dataIndex: "updatedAt", width: 180, render: (v: string) => v.replace("T", " ").slice(0, 19) },
+            { title: "更新", dataIndex: "updatedAt", width: 180, render: (v: string) => formatRunTime(v) },
             {
               title: "",
               width: 70,

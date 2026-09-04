@@ -3,6 +3,7 @@ import { Alert, Button, Card, Col, Form, Input, InputNumber, Popconfirm, Radio, 
 import { App as AntdApp } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { useJob } from "../jobs/JobContext";
+import { formatRunTime } from "../runs/format";
 import { useRuns } from "../runs/useRuns";
 import type { RunSummary } from "../runs/types";
 import { ConfirmDangerButton } from "../ui/ConfirmDangerButton";
@@ -230,6 +231,7 @@ export default function TrainPage() {
               width: 90,
               render: (v: boolean) => (v ? "有" : "无"),
             },
+            { title: "更新", dataIndex: "updatedAt", width: 180, render: (v: string) => formatRunTime(v) },
             {
               title: "",
               width: 70,
