@@ -18,6 +18,7 @@ export {
   createRun,
   deleteRun,
   emptyProgress,
+  findEvalRunWithPred,
   listRuns,
   loadWorkspace,
   patchRun,

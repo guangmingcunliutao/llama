@@ -3,7 +3,8 @@ export { defineConfig, findRepoRoot, loadUserConfig, normalizeSources } from "./
 export { defaultUserConfig } from "./defaultConfig.js";
 export { generateEval } from "./generateEval.js";
 export { generate, collectSentences } from "./generate.js";
-export { materializeEvalSlices } from "./evalSlices.js";
+export { evaluate, evaluateAll, ensureEvalGold, prepareEvalAll, ruleBaselineAll } from "./evaluate.js";
+export { materializeEvalSlices, hasEvalGold } from "./evalSlices.js";
 export { pidAlive, killProcessTree } from "./killTree.js";
 export {
   createRun,
@@ -12,6 +13,7 @@ export {
   evalRunPaths,
   fingerprintFile,
   fingerprintValue,
+  findEvalRunWithPred,
   listRuns,
   loadWorkspace,
   patchWorkspace,
@@ -46,7 +48,6 @@ export { PEOPLE_SEARCH_DISPLAY } from "./sources/peopleDefaults.js";
 export { toShareGpt, toMessages, parseFormats } from "./format.js";
 export { normalizeRow, normalizeRows, readDatasetRows, pairKeyForRow, toLfShareGpt, toLfAlpaca } from "./normalize.js";
 export { infer } from "./infer.js";
-export { evaluate, evaluateAll, ruleBaselineAll } from "./evaluate.js";
 export { analyze } from "./analyze.js";
 export {
   applyModelHubEnv,

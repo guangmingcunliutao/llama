@@ -12,11 +12,13 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { readJsonl, writeJsonl } from "./jsonl.js";
+import { materializeEvalSlices } from "./evalSlices.js";
+import { countJsonl, readJsonl, writeJsonl } from "./jsonl.js";
 import type {
   EvaluateFlags,
   MetricsGroup,
   MetricsReport,
+  OutputPaths,
   PredictionRow,
   ResolvedConfig,
   SftExample,
@@ -208,6 +210,59 @@ export function listEvalSlices(cfg: ResolvedConfig): EvalSlice[] {
   ];
 }
 
+function concatExisting<T>(files: string[]): T[] {
+  return files.flatMap((file) => readJsonl<T>(file, "empty"));
+}
+
+/** 验证集缺 eval.jsonl 时，从 raw 或 seen/unseen 补出来。 */
+export function ensureEvalGold(paths: Pick<OutputPaths, "sft" | "eval" | "evalSeen" | "evalUnseen" | "evalKeep">): boolean {
+  if (countJsonl(paths.eval) > 0) return true;
+  const evalDir = path.dirname(paths.eval);
+  const evalRaw = path.join(evalDir, "raw.jsonl");
+  if (fs.existsSync(evalRaw)) {
+    materializeEvalSlices({
+      train: paths.sft,
+      evalRaw,
+      eval: paths.eval,
+      evalSeen: paths.evalSeen,
+      evalUnseen: paths.evalUnseen,
+      evalKeep: paths.evalKeep,
+    });
+    return countJsonl(paths.eval) > 0;
+  }
+  const rows = concatExisting<SftExample>([paths.evalSeen, paths.evalUnseen]);
+  if (!rows.length) return false;
+  writeJsonl(paths.eval, rows);
+  return true;
+}
+
+/** 缺总预测时，按 seen + unseen 的 pred 拼回 pred.jsonl。 */
+export function ensureEvalPred(paths: Pick<OutputPaths, "pred" | "predSeen" | "predUnseen">): boolean {
+  if (countJsonl(paths.pred) > 0) return true;
+  const rows = concatExisting<PredLoose>([paths.predSeen, paths.predUnseen]);
+  if (!rows.length) return false;
+  writeJsonl(paths.pred, rows);
+  return true;
+}
+
+export function prepareEvalAll(cfg: ResolvedConfig): { gold: boolean; pred: boolean } {
+  const gold = ensureEvalGold(cfg.paths);
+  const pred = ensureEvalPred(cfg.paths);
+  return { gold, pred };
+}
+
+function missingEvalAllError(cfg: ResolvedConfig): Error {
+  const goldOk = countJsonl(cfg.paths.eval) > 0;
+  const predOk = countJsonl(cfg.paths.pred) > 0;
+  const missing = [
+    goldOk ? null : `验证集 ${cfg.paths.eval}`,
+    predOk ? null : `预测 ${cfg.paths.pred}`,
+  ].filter(Boolean);
+  return new Error(
+    `无法打分：缺少 ${missing.join(" 与 ") || "验证集与预测"}。请先在「数据生成」页准备验证集，再点「开始评估」生成预测（或「规则上界」对照）。`,
+  );
+}
+
 function writeReport(report: MetricsReport, outFile: string): void {
   fs.mkdirSync(path.dirname(outFile), { recursive: true });
   fs.writeFileSync(outFile, `${JSON.stringify(report, null, 2)}\n`, "utf8");
@@ -252,6 +307,7 @@ export function evaluate(cfg: ResolvedConfig, flags: EvaluateFlags = {}): Metric
 
 /** 对 eval / seen / unseen / keep 分别打分，汇总进同一份 metrics.json。 */
 export function evaluateAll(cfg: ResolvedConfig, flags: EvaluateFlags = {}): MetricsReport {
+  prepareEvalAll(cfg);
   const slices: Record<string, MetricsGroup> = {};
   let main: MetricsReport | null = null;
   const allScored: ScoredRow[] = [];
@@ -278,7 +334,7 @@ export function evaluateAll(cfg: ResolvedConfig, flags: EvaluateFlags = {}): Met
   }
 
   if (!main) {
-    throw new Error("evaluate --all 需要先有 eval/eval.jsonl 与 infer/pred.jsonl。请先 split，再 infer 或 evaluate --baseline。");
+    throw missingEvalAllError(cfg);
   }
 
   writeJsonl(cfg.paths.scored, allScored);

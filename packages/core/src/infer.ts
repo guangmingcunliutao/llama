@@ -6,8 +6,8 @@
  * file：只把样本落到 pred 路径。
  */
 import fs from "node:fs";
-import { listEvalSlices } from "./evaluate.js";
-import { readJsonOrJsonl, writeJsonl } from "./jsonl.js";
+import { ensureEvalGold, listEvalSlices } from "./evaluate.js";
+import { countJsonl, readJsonOrJsonl, writeJsonl } from "./jsonl.js";
 import type { InferBackend, InferFlags, PredictionRow, ResolvedConfig, SftExample } from "./types.js";
 import { inferLlamaFactorySlice } from "./inferLf.js";
 
@@ -106,12 +106,15 @@ async function inferFile(
 export async function infer(cfg: ResolvedConfig, flags: InferFlags = {}): Promise<string> {
   const backend = asBackend(flags.backend, "llamafactory");
   if (flags.all) {
+    ensureEvalGold(cfg.paths);
     const paths: string[] = [];
     for (const slice of listEvalSlices(cfg)) {
-      if (!fs.existsSync(slice.gold)) continue;
+      if (!fs.existsSync(slice.gold) || countJsonl(slice.gold) === 0) continue;
       paths.push(await inferFile(cfg, slice.gold, slice.pred, backend, flags));
     }
-    if (!paths.length) throw new Error("infer --all 没有找到评估集。请先执行 mtrain split 或 generate-eval。");
+    if (!paths.length) {
+      throw new Error(`infer --all 没有找到评估集（${cfg.paths.eval}）。请先在「数据生成」页生成验证集。`);
+    }
     return paths[0]!;
   }
   const input = flags.input || cfg.paths.eval;

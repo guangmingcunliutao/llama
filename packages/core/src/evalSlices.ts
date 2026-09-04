@@ -6,10 +6,16 @@
  * eval_unseen_pair.jsonl 整组词对未进训练
  * eval_keep.jsonl       本身正确、不应改动
  */
-import { writeJsonl, readJsonl } from "./jsonl.js";
+import fs from "node:fs";
+import { countJsonl, writeJsonl, readJsonl } from "./jsonl.js";
 import { pairKeyForRow } from "./normalize.js";
 import type { DataRunPaths } from "./runs/types.js";
 import type { SftExample } from "./types.js";
+
+export type EvalSliceFiles = Pick<
+  DataRunPaths,
+  "train" | "evalRaw" | "eval" | "evalSeen" | "evalUnseen" | "evalKeep"
+>;
 
 function isKeep(row: SftExample): boolean {
   if (row.error_type === "keep" || row.split === "keep") return true;
@@ -31,7 +37,16 @@ export interface EvalSliceCounts {
   eval_keep: number;
 }
 
-export function materializeEvalSlices(paths: DataRunPaths): EvalSliceCounts {
+export function hasEvalGold(paths: Pick<DataRunPaths, "eval" | "evalRaw" | "evalSeen" | "evalUnseen">): boolean {
+  return (
+    countJsonl(paths.eval) > 0 ||
+    fs.existsSync(paths.evalRaw) ||
+    countJsonl(paths.evalSeen) > 0 ||
+    countJsonl(paths.evalUnseen) > 0
+  );
+}
+
+export function materializeEvalSlices(paths: EvalSliceFiles): EvalSliceCounts {
   const rows = readJsonl<SftExample>(paths.evalRaw, "empty");
   const trained = trainPairKeys(paths.train);
   const seen: SftExample[] = [];

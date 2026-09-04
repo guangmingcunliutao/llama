@@ -314,6 +314,23 @@ export function listRuns(outDir: string, kind: RunKind): RunSummary[] {
   return rows;
 }
 
+/** 当前评估实验没有 pred.jsonl 时，改用最近一次已有预测的评估实验。 */
+export function findEvalRunWithPred(
+  outDir: string,
+  opts: { preferId?: string | null; dataRunId?: string | null; trainRunId?: string | null } = {},
+): string | null {
+  const hasPred = (id: string): boolean => countJsonl(evalRunPaths(outDir, id).pred) > 0;
+  if (opts.preferId && hasPred(opts.preferId)) return opts.preferId;
+  const rows = listRuns(outDir, "eval").filter((row) => hasPred(row.id));
+  if (!rows.length) return null;
+  const matched = rows.find((row) => {
+    if (opts.trainRunId && row.trainRunId !== opts.trainRunId) return false;
+    if (opts.dataRunId && row.dataRunId !== opts.dataRunId) return false;
+    return true;
+  });
+  return (matched ?? rows[0])!.id;
+}
+
 export function deleteRun(outDir: string, kind: RunKind, id: string): WorkspacePointer {
   const dir = pathsFor(outDir, kind, id).dir;
   if (!fs.existsSync(dir)) throw new Error(`找不到实验目录 ${kind}/${id}`);

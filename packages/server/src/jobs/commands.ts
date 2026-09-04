@@ -10,10 +10,12 @@ import {
   detectQuantTools,
   evaluate,
   findBash,
+  findEvalRunWithPred,
   findGit,
   findSystemPython,
   generate,
   generateEval,
+  hasEvalGold,
   infer,
   installLlamaFactory,
   loadUserConfig,
@@ -179,7 +181,9 @@ const inferCommand: JobCommand = {
     const dataId = asFlag(body.dataRunId) ?? ws.dataRunId;
     try {
       const data = requireDataRun(cfg.outDir, dataId);
-      if (!fs.existsSync(data.paths.eval)) return `没有验证集 ${data.paths.eval}，请先在「数据生成」页生成验证集`;
+      if (!hasEvalGold(data.paths)) {
+        return `没有验证集 ${data.paths.eval}，请先在「数据生成」页生成验证集`;
+      }
     } catch (err) {
       return err instanceof Error ? err.message : String(err);
     }
@@ -224,29 +228,70 @@ const inferCommand: JobCommand = {
     const adapter =
       asFlag(body.adapter) || (trainId ? trainRunPaths(latest0.outDir, trainId).ckpt : undefined);
     const cfg = await loadUserConfig({ command: "infer", cwd: app.dataRoot() });
-    await infer(cfg, {
-      backend,
-      url: asFlag(body.url),
-      model: asFlag(body.model),
-      adapter,
-      home: asFlag(body.home) ?? cfg.lfHome ?? undefined,
-      bin: asFlag(body.bin) ?? cfg.lfBin ?? undefined,
-      hub: asFlag(body.hub) ?? cfg.lfHub,
-      all: body.all !== false,
-      signal: job.signal,
-      onLog: job.onLog,
-    });
-    evaluate(cfg, { all: true });
-    job.onLog("[infer] 已根据预测计算指标（reports/metrics.json）");
+    let inferErr: unknown = null;
+    try {
+      await infer(cfg, {
+        backend,
+        url: asFlag(body.url),
+        model: asFlag(body.model),
+        adapter,
+        home: asFlag(body.home) ?? cfg.lfHome ?? undefined,
+        bin: asFlag(body.bin) ?? cfg.lfBin ?? undefined,
+        hub: asFlag(body.hub) ?? cfg.lfHub,
+        all: body.all !== false,
+        signal: job.signal,
+        onLog: job.onLog,
+      });
+    } catch (err) {
+      inferErr = err;
+      job.onLog(`[infer] 推理中断: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    try {
+      evaluate(cfg, { all: true });
+      job.onLog("[infer] 已根据预测计算指标（reports/metrics.json）");
+    } catch (evalErr) {
+      if (inferErr) throw inferErr;
+      throw evalErr;
+    }
+    if (inferErr) throw inferErr;
   },
 };
 
 const evaluateCommand: JobCommand = {
   name: "evaluate",
-  async validate() {
+  async validate(app) {
+    const cfg = await loadUserConfig({ command: "evaluate", cwd: app.dataRoot() });
+    const ws = loadWorkspace(cfg.outDir);
+    try {
+      const data = requireDataRun(cfg.outDir, ws.dataRunId);
+      if (!hasEvalGold(data.paths)) {
+        return `没有验证集 ${data.paths.eval}，请先在「数据生成」页生成验证集`;
+      }
+    } catch (err) {
+      return err instanceof Error ? err.message : String(err);
+    }
+    const predId = findEvalRunWithPred(cfg.outDir, {
+      preferId: ws.evalRunId,
+      dataRunId: ws.dataRunId,
+      trainRunId: ws.trainRunId,
+    });
+    if (!predId) {
+      return "当前没有预测文件。请先点「开始评估」生成预测，或点「规则上界」对照。";
+    }
     return null;
   },
-  async execute(app) {
+  async execute(app, job) {
+    const latest0 = await loadUserConfig({ command: "evaluate", cwd: app.dataRoot() });
+    const ws = loadWorkspace(latest0.outDir);
+    const predId = findEvalRunWithPred(latest0.outDir, {
+      preferId: ws.evalRunId,
+      dataRunId: ws.dataRunId,
+      trainRunId: ws.trainRunId,
+    });
+    if (predId && predId !== ws.evalRunId) {
+      patchWorkspace(latest0.outDir, { evalRunId: predId });
+      job.onLog(`[evaluate] 当前评估实验没有预测，改用 ${predId}`);
+    }
     const latest = await loadUserConfig({ command: "evaluate", cwd: app.dataRoot() });
     evaluate(latest, { all: true });
   },

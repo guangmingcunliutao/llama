@@ -89,7 +89,7 @@ export default function EvalPage() {
               children: (
                 <Space direction="vertical" size={12} style={{ width: "100%" }}>
                   <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-                    已有预测时仅打分：不加载模型，只用已有 pred.jsonl 重新算分。规则上界：按词表把错词换成正词，用来估计上限，会覆盖页面上的模型分数。
+                    已有预测时仅打分：不加载模型，用当前评估实验的 pred.jsonl 重新算分；若当前实验还没有预测，会改用最近一次已有预测的实验。规则上界：按词表把错词换成正词，用来估计上限，会覆盖页面上的模型分数。
                   </Typography.Paragraph>
                   <Space wrap>
                     <Button
