@@ -11,6 +11,8 @@
     "mtrain": "node ./packages/cli/bin/mtrain.js",
     "server:dev": "pnpm --filter @model-training/core build && pnpm --parallel --filter @model-training/core --filter @model-training/server dev",
     "webui": "pnpm --filter @model-training/server start",
+    "lf:webui": "node ./scripts/lf-webui.mjs",
+    "swanlab:watch": "node ./scripts/swanlab-watch.mjs",
     "dev": "pnpm --filter @model-training/web dev",
     "test": "pnpm --filter @model-training/core test && pnpm --filter @model-training/server test && pnpm --filter @model-training/web test",
     "lint": "eslint .",
