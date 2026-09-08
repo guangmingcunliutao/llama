@@ -19,6 +19,7 @@ export interface BuildSourceContext {
   cacheDir: string;
   globalLimiter: RequestRateLimiter;
   signal?: AbortSignal;
+  skipCache?: boolean;
 }
 
 export function buildSource(item: ResolvedSource, ctx: BuildSourceContext): SearchSource {
@@ -39,7 +40,12 @@ export function buildSource(item: ResolvedSource, ctx: BuildSourceContext): Sear
     ? item.options.cacheDir
     : path.join(ctx.cacheDir, item.name);
 
-  return new HttpSearchSource(item.name, { ...item.options, cacheDir }, limiter, ctx.signal);
+  return new HttpSearchSource(
+    item.name,
+    { ...item.options, cacheDir, skipCache: ctx.skipCache },
+    limiter,
+    ctx.signal,
+  );
 }
 
 /** 选出已启用的源；`--source name` 只保留这一条。 */

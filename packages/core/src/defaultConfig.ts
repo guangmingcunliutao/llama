@@ -18,6 +18,7 @@ export function defaultUserConfig(): UserConfig {
       home: "",
       hub: "modelscope",
       hfEndpoint: "",
+      datasetDir: "./outputs/lf",
     },
     sources: [
       {

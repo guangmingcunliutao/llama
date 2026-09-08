@@ -80,6 +80,8 @@ export interface HttpSourceOptions {
   requestsPerMinute?: number;
   /** 检索翻页次数，对应请求体里的 `page`（人民网等）。默认 1 */
   maxPages?: number;
+  /** 运行时：跳过磁盘缓存，仍会把新结果写回 */
+  skipCache?: boolean;
 }
 
 export interface LocalJsonlSourceOptions {
@@ -371,7 +373,10 @@ export interface ResolvedConfig {
   trainOutputDir: string | null;
   importSource: string | null;
   importLimit: number | null;
+  /** 旧代训每次实验自己的 lf 副本（outputs/train/<id>/lf） */
   lfDatasetDir: string | null;
+  /** 给 LlamaFactory WebUI 的稳定数据集根（outputs/lf） */
+  lfExportDir: string;
   lfDatasetInfo: string;
   lfPrefix: string;
   lfHome: string | null;
@@ -420,6 +425,8 @@ export interface GenerateFlags {
   cleanRatio?: string | number;
   maxPages?: string | number;
   seed?: string | number;
+  /** 为 true 时不读检索磁盘缓存，仍会写入新结果 */
+  skipCache?: boolean;
   signal?: AbortSignal;
   mode?: "fresh" | "resume" | "continue";
   runId?: string;

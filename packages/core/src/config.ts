@@ -336,6 +336,10 @@ export async function loadUserConfig(opts: LoadUserConfigOptions): Promise<Resol
   const importSource = resolveFrom(root, cfg.import?.source ?? cfg.importSource);
   const importLimit = cfg.import?.limit ?? cfg.importLimit ?? null;
   const lfDatasetDir = trainP.lf;
+  const lfExportDir =
+    resolveFrom(root, cfg.llamafactory?.datasetDir) ||
+    resolveFrom(root, cfg.lfDatasetDir) ||
+    path.join(outDir, "lf");
   const lfDatasetInfo = cfg.llamafactory?.datasetInfo ?? cfg.lfDatasetInfo ?? "dataset_info.json";
   const lfPrefix = cfg.llamafactory?.prefix ?? cfg.lfPrefix ?? "corr";
   const lfHome =
@@ -393,6 +397,7 @@ export async function loadUserConfig(opts: LoadUserConfigOptions): Promise<Resol
     importSource,
     importLimit,
     lfDatasetDir,
+    lfExportDir,
     lfDatasetInfo,
     lfPrefix,
     lfHome,

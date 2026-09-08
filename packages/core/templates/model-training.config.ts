@@ -10,12 +10,13 @@ export default defineConfig({
   instruction: "请将句子中的不规范表述改正为规范表述，只输出改正后的句子。",
   dict: "./data/term_pairs.jsonl",
   formats: ["messages"],
-  llamafactory: {
-    prefix: "term",
-    home: "",
-    hub: "modelscope",
-    hfEndpoint: "",
-  },
+    llamafactory: {
+      prefix: "term",
+      home: "",
+      hub: "modelscope",
+      hfEndpoint: "",
+      datasetDir: "./outputs/lf",
+    },
   sources: [
     {
       name: "people_search",

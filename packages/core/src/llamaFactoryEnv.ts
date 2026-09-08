@@ -252,20 +252,30 @@ export function trainChildEnv(
   return env;
 }
 
-export function trainSpawnSpec(
+export function cliSpawnSpec(
   detect: LlamaFactoryDetect,
-  yamlPath: string,
+  args: string[],
 ): { command: string; args: string[]; shell: boolean } {
-  const yaml = path.resolve(yamlPath);
   if (detect.mode === "module" && detect.python) {
-    return { command: detect.python, args: ["-m", "llamafactory.cli", "train", yaml], shell: false };
+    return { command: detect.python, args: ["-m", "llamafactory.cli", ...args], shell: false };
   }
   if (detect.bin) {
     const lower = detect.bin.toLowerCase();
     const shell = lower.endsWith(".cmd") || lower.endsWith(".bat");
-    return { command: detect.bin, args: ["train", yaml], shell };
+    return { command: detect.bin, args, shell };
   }
   throw new Error("LlamaFactory 环境未就绪");
+}
+
+export function trainSpawnSpec(
+  detect: LlamaFactoryDetect,
+  yamlPath: string,
+): { command: string; args: string[]; shell: boolean } {
+  return cliSpawnSpec(detect, ["train", path.resolve(yamlPath)]);
+}
+
+export function webuiSpawnSpec(detect: LlamaFactoryDetect): { command: string; args: string[]; shell: boolean } {
+  return cliSpawnSpec(detect, ["webui"]);
 }
 
 /** 子进程字节：优先 UTF-8，非法序列则按系统中文编码解读。 */

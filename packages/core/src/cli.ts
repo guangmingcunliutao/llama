@@ -89,6 +89,7 @@ const HELP: Record<string, string> = {
   --limit-terms <n>       只处理前 N 个正确词（试跑）
   --source <name>         只用配置里某一个源的 name
   --format <list>         默认 messages；也可 alpaca / sharegpt
+  --no-cache              不读检索磁盘缓存（仍会写入新结果）
 `,
   "generate-eval": `generate-eval — 独立检索写出验证集
 
@@ -97,6 +98,7 @@ const HELP: Record<string, string> = {
 选项:
   --dict <file>
   --source <name>
+  --no-cache
 `,
   train: `train — 启动 LlamaFactory 训练
 
@@ -127,15 +129,9 @@ const HELP: Record<string, string> = {
   --output <file>   只写出规范化样本，不划分验证集
   --limit <n>       最多导入 n 条（试跑/限量训练）
 `,
-  "export-lf": `export-lf — 将 split 后的 train/eval 写入 LlamaFactory 数据集目录
+  "export-lf": `export-lf — 写出 LlamaFactory WebUI 的数据集目录
 
-默认写出 alpaca 格式 .jsonl，并合并 dataset_info.json。
-需要 sharegpt 时在配置 formats 或 --format 里加上 sharegpt。
-
-选项:
-  --dataset-dir <dir>   LlamaFactory 的 dataset_dir（或配置 llamafactory.datasetDir）
-  --prefix <name>       数据集名前缀，默认 corr
-  --format <list>       alpaca / sharegpt / alpaca,sharegpt
+默认 outputs/lf（train/term_train.jsonl、eval/term_eval.jsonl、dataset_info.json）。
 `,
   pipeline: `pipeline — 一键：import → split → export-lf
 
@@ -362,6 +358,7 @@ export async function main(argv: string[]): Promise<number> {
       baseline: { type: "boolean", default: false },
       all: { type: "boolean", default: false },
       force: { type: "boolean", default: false },
+      "no-cache": { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
       fresh: { type: "boolean", default: false },
       resume: { type: "boolean", default: false },
@@ -441,6 +438,7 @@ export async function main(argv: string[]): Promise<number> {
       runId: values.run,
       parentId: values["continue-from"],
       label: values.label,
+      skipCache: values["no-cache"],
     });
     return 0;
   }
@@ -453,6 +451,7 @@ export async function main(argv: string[]): Promise<number> {
       limitTerms: values["limit-terms"],
       mode: runMode(),
       runId: values.run,
+      skipCache: values["no-cache"],
     });
     return 0;
   }

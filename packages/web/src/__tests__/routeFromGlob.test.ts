@@ -7,6 +7,6 @@ describe("routeFromGlobKey", () => {
     expect(routeFromGlobKey("../pages/data.tsx")).toBe("/data");
     expect(routeFromGlobKey("../pages/foo/bar.tsx")).toBe("/foo/bar");
     expect(routeFromGlobKey("../pages/foo/index.tsx")).toBe("/foo");
-    expect(routeFromGlobKey("E:/llama/packages/web/src/pages/train.tsx")).toBe("/train");
+    expect(routeFromGlobKey("E:/llama/packages/web/src/pages/settings.tsx")).toBe("/settings");
   });
 });

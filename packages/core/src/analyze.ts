@@ -7,7 +7,7 @@
  *
  * 综合分（越高越好，BLEU/ROUGE 先除以 100）：
  *   0.35 * ROUGE-L + 0.25 * BLEU-4 + 0.25 * exact_match + 0.15 * (1 - copy_input)
- * 若没有预测产物，则退回 -eval_loss。
+ * 没有逐条预测时不写综合分（不用 eval_loss 顶替）。
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -392,7 +392,7 @@ function slimSnapshot(snap: LfSnapshot): LfSnapshot {
   return { ...snap, log };
 }
 
-function listRuns(runsDir: string): RunRecord[] {
+function listAnalyzeRunRecords(runsDir: string): RunRecord[] {
   if (!fs.existsSync(runsDir)) return [];
   const names = fs
     .readdirSync(runsDir, { withFileTypes: true })
@@ -514,7 +514,7 @@ function buildRun(cfg: ResolvedConfig, flags: AnalyzeFlags, snap: LfSnapshot, ou
 /** 分析 LlamaFactory 验证/预测目录，可选保存为一次 run，并更新对比榜 / 最优配置。 */
 export function analyze(cfg: ResolvedConfig, flags: AnalyzeFlags = {}): RunRecord | null {
   if (flags.compare && !flags.save && !flags.dir) {
-    const runs = listRuns(cfg.paths.runsDir);
+    const runs = listAnalyzeRunRecordsPublic(cfg);
     const board = updateLeaderboard(cfg, runs);
     console.log(`[analyze] best=${board.best ?? "—"} compare=${cfg.paths.compare}`);
     return runs[0] ?? null;
@@ -529,6 +529,9 @@ export function analyze(cfg: ResolvedConfig, flags: AnalyzeFlags = {}): RunRecor
 
   const snap = loadLfMetrics(outputDir);
   if (!snap.n_pred) applyGoldPredMetrics(snap, cfg.paths.eval, cfg.paths.pred);
+  if (flags.save && !snap.n_pred) {
+    throw new Error("没有逐条预测，不能写入综合分。请先完成评估（要有 pred.jsonl），不要用 LlamaFactory 的 eval_loss 当选参依据。");
+  }
   const run = buildRun(cfg, flags, snap, path.resolve(outputDir));
   const md = renderAnalysisMarkdown(run);
 
@@ -566,7 +569,7 @@ export function analyze(cfg: ResolvedConfig, flags: AnalyzeFlags = {}): RunRecor
   }
 
   if (flags.save || flags.compare) {
-    const runs = listRuns(cfg.paths.runsDir);
+    const runs = listAnalyzeRunRecordsPublic(cfg);
     if (runs.length) {
       const board = updateLeaderboard(cfg, runs);
       console.log(`[analyze] best=${board.best ?? "—"} compare=${cfg.paths.compare}`);
@@ -578,4 +581,9 @@ export function analyze(cfg: ResolvedConfig, flags: AnalyzeFlags = {}): RunRecor
   }
 
   return run;
+}
+
+/** 已保存的调参 run，供对比表（未评估或没有逐条预测的不在此列）。 */
+export function listAnalyzeRunRecordsPublic(cfg: ResolvedConfig): RunRecord[] {
+  return listAnalyzeRunRecords(cfg.paths.runsDir).filter((row) => (row.snapshot.n_pred ?? 0) > 0);
 }

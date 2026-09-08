@@ -75,7 +75,7 @@ export class HttpSearchSource implements SearchSource {
   private async searchPage(keyword: string, page: number): Promise<SourceDocument[]> {
     const cacheKey = `${keyword}#${page}`;
     throwIfAborted(this.signal);
-    const cached = this.readCache(cacheKey);
+    const cached = this.options.skipCache ? null : this.readCache(cacheKey);
     if (cached) return cached;
 
     await this.limiter.acquire(`source=${this.name} keyword=${keyword} page=${page}`, this.signal);

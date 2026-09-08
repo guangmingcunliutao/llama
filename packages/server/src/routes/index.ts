@@ -7,6 +7,7 @@ import configRoute from "./config.js";
 import datasetsRoute from "./datasets.js";
 import healthRoute from "./health.js";
 import jobsRoute from "./jobs.js";
+import lfRoute from "./lf.js";
 import providersRoute from "./providers.js";
 import quantDetectRoute from "./quantDetect.js";
 import reportsRoute from "./reports.js";
@@ -23,6 +24,7 @@ const PLUGINS = [
   uploadSeedRoute,
   uploadTrainRoute,
   jobsRoute,
+  lfRoute,
   reportsRoute,
   runsRoute,
   quantDetectRoute,

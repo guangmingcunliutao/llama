@@ -20,7 +20,7 @@ export default defineConfig({
     target: "node18",
     minify: false,
     sourcemap: true,
-    emptyOutDir: true,
+    emptyOutDir: !process.argv.includes("--watch"),
     lib: {
       entry: {
         cli: path.resolve(root, "src/cli.ts"),

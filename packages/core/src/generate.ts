@@ -15,6 +15,7 @@ import { resolveDataSession } from "./runs/dataSession.js";
 import { goodSentence, splitSentences } from "./text.js";
 import { buildSource, selectSources } from "./sources/registry.js";
 import { normalizeSentence } from "./sentenceNorm.js";
+import { tryExportLfBoard } from "./lfHandoff.js";
 import type {
   GenerateFlags,
   GenerateResult,
@@ -132,7 +133,13 @@ export async function generate(cfg: ResolvedConfig, flags: GenerateFlags = {}): 
 
   const limiter = new RequestRateLimiter(cfg.rate.requestsPerMinute, cfg.rate.jitterSec);
   const sources = selected.map((item) =>
-    buildSource(item, { root: cfg.root, cacheDir: cfg.cacheDir, globalLimiter: limiter, signal: flags.signal }),
+    buildSource(item, {
+      root: cfg.root,
+      cacheDir: cfg.cacheDir,
+      globalLimiter: limiter,
+      signal: flags.signal,
+      skipCache: flags.skipCache,
+    }),
   );
 
   const log = (line: string): void => {
@@ -149,7 +156,7 @@ export async function generate(cfg: ResolvedConfig, flags: GenerateFlags = {}): 
   log(
     `[generate] dict=${pairs.length} unique_correct=${grouped.size} train_terms=${trainTerms.length} holdout_unseen=${hold} pairs_per_term=${params.pairsPerTerm} clean_ratio=${params.cleanRatio} max_pages=${params.maxPages}`,
   );
-  log(`[generate] sources=${sources.map((s) => s.name).join(",")}`);
+  log(`[generate] sources=${sources.map((s) => s.name).join(",")}${flags.skipCache ? " skipCache=true" : ""}`);
   log(`[generate] alpaca=${outFile}`);
 
   if (progress.phase === "train_done" || progress.phase === "completed" || progress.phase === "generating_eval") {
@@ -273,9 +280,11 @@ export async function generate(cfg: ResolvedConfig, flags: GenerateFlags = {}): 
     const alpacaRows = readJsonl<SftExample>(outFile, "empty");
     writeJsonl(paths.trainSharegpt, alpacaRows.map(toShareGpt));
     log(`[done] wrote=${written} alpaca=${outFile} sharegpt=${paths.trainSharegpt}`);
+    tryExportLfBoard(cfg);
     return { written, output: outFile, sharegpt: paths.trainSharegpt };
   }
 
   log(`[done] wrote=${written} file=${outFile}`);
+  tryExportLfBoard(cfg);
   return { written, output: outFile };
 }

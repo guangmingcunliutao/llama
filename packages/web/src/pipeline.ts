@@ -4,25 +4,13 @@ export const PIPELINE = [
     path: "/data",
     title: "数据生成",
     blurb: "词对与句对",
-    detail: "上传错词表检索句对，或直接导入现成训练 jsonl 并划分验证集。句子不与训练重复。",
-  },
-  {
-    path: "/train",
-    title: "训练",
-    blurb: "LoRA 微调",
-    detail: "用训练集微调底模。每次训练是一次实验，可中断后续训。",
-  },
-  {
-    path: "/eval",
-    title: "评估",
-    blurb: "纠错打分",
-    detail: "用训好的模型改验证集句子，计算纠错分数。",
+    detail: "准备训练/验证集后打开 LlamaFactory 训练和评估。",
   },
   {
     path: "/analyze",
     title: "调参",
-    blurb: "超参建议",
-    detail: "不重新跑模型。读取评估留下的预测，给出下一轮学习率等建议。",
+    blurb: "对比超参",
+    detail: "对比多次评估结果，看哪组训练参数纠错更好。",
   },
   {
     path: "/quant",

@@ -1,0 +1,24 @@
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "127.0.0.1:5000:5000"
+      - "127.0.0.1:7860:7860"
+      - "127.0.0.1:5092:5092"
+    environment:
+      MODEL_TRAINING_HOST: "0.0.0.0"
+      MODEL_TRAINING_DATA: /data
+      LLAMAFACTORY_WEBUI_URL: http://127.0.0.1:7860
+      SWANLAB_WATCH_URL: http://127.0.0.1:5092
+      GRADIO_SERVER_NAME: "0.0.0.0"
+      SWANLAB_MODE: local
+    volumes:
+      - ..:/data
+      # 底模可再挂： - /path/to/models:/models:ro
+      # Windows 上尽量把 outputs 放在 WSL 文件系统，NTFS 挂大数据集会拖慢训练。
+    gpus: all
+    ipc: host
+    shm_size: "16gb"
+    restart: unless-stopped

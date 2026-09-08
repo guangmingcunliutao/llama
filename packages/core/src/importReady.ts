@@ -19,6 +19,7 @@ import {
 } from "./runs/store.js";
 import { dataParamsFrom } from "./runs/dataSession.js";
 import { splitDataset } from "./split.js";
+import { tryExportLfBoard } from "./lfHandoff.js";
 import type { ImportReadyFlags, ImportReadyResult, ResolvedConfig, SftExample } from "./types.js";
 
 function resolveInput(cfg: ResolvedConfig, flags: ImportReadyFlags): string {
@@ -118,6 +119,7 @@ export function importReadyTrain(cfg: ResolvedConfig, flags: ImportReadyFlags = 
     log(
       `[import] run=${meta.id} train=${report.train} eval=${report.eval} seen=${report.eval_seen_pair} unseen=${report.eval_unseen_pair} keep=${report.eval_keep}`,
     );
+    tryExportLfBoard(cfg);
     return {
       runId: meta.id,
       label,

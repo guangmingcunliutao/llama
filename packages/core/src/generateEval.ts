@@ -15,6 +15,7 @@ import { normalizeSentence } from "./sentenceNorm.js";
 import { appendRunLog, patchRun, writeDataProgress } from "./runs/store.js";
 import { resolveEvalSession } from "./runs/dataSession.js";
 import { buildSource, selectSources } from "./sources/registry.js";
+import { tryExportLfBoard } from "./lfHandoff.js";
 import type { GenerateFlags, ResolvedConfig, SftExample } from "./types.js";
 
 function trainOutputs(trainFile: string): string[] {
@@ -76,6 +77,7 @@ export async function generateEval(
       cacheDir: cfg.cacheDir,
       globalLimiter: limiter,
       signal: flags.signal,
+      skipCache: flags.skipCache,
     }),
   );
 
@@ -105,7 +107,7 @@ export async function generateEval(
     pid: process.pid,
     error: null,
   });
-  log(`[generate-eval] run=${session.meta.id} terms=${terms.length} pairs_per_term=${params.pairsPerTerm}`);
+  log(`[generate-eval] run=${session.meta.id} terms=${terms.length} pairs_per_term=${params.pairsPerTerm}${flags.skipCache ? " skipCache=true" : ""}`);
 
   const writeKeep = (): void => {
     const target = cleanSampleCount(writtenError, params.cleanRatio);
@@ -253,6 +255,7 @@ export async function generateEval(
   log(
     `[generate-eval] wrote=${writtenError + writtenKeep} errors=${writtenError} keep=${writtenKeep} leaked_skip=${skippedLeak} seen=${slices.eval_seen_pair} unseen=${slices.eval_unseen_pair} keep_file=${slices.eval_keep}`,
   );
+  tryExportLfBoard(cfg);
   return {
     written: writtenError + writtenKeep,
     output: outFile,

@@ -553,7 +553,7 @@ describe("llamafactory infer helpers", () => {
 
 describe("applyGoldPredMetrics", () => {
   it("fills exact/copy from infer pred.jsonl when LF dump is missing", async () => {
-    const { applyGoldPredMetrics, loadLfMetrics } = await import("../lfMetrics.js");
+    const { applyGoldPredMetrics, loadLfMetrics, rankingScore } = await import("../lfMetrics.js");
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mt-an-"));
     fs.writeFileSync(
       path.join(dir, "trainer_log.jsonl"),
@@ -578,6 +578,8 @@ describe("applyGoldPredMetrics", () => {
     expect(snap.n_pred).toBe(2);
     expect(snap.exact_match).toBe(0.5);
     expect(snap.copy_input_rate).toBe(0.5);
+    expect(rankingScore({ ...snap, n_pred: 0 }).score).toBe(Number.NEGATIVE_INFINITY);
+    expect(rankingScore(snap).score).toBeGreaterThan(Number.NEGATIVE_INFINITY);
   });
 });
 

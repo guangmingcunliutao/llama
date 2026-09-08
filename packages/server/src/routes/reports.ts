@@ -2,7 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { FastifyPluginAsync } from "fastify";
-import { loadUserConfig, parseTrainYaml } from "@model-training/core";
+import { listSavedAnalyzeRuns, loadUserConfig, parseTrainYaml } from "@model-training/core";
 import { ok } from "../api/envelope.js";
 
 function readJsonIfExists(file: string): unknown {
@@ -37,6 +37,23 @@ const reportsRoute: FastifyPluginAsync = async (app) => {
       trainYaml: cfg.trainConfig,
       lfPredict: cfg.paths.lfPredict,
       trainKnobs: parseTrainYaml(yamlText),
+      compareRuns: listSavedAnalyzeRuns(cfg).map((row) => ({
+        name: row.name,
+        savedAt: row.saved_at,
+        score: row.score,
+        bleu4: row.snapshot.bleu4,
+        rougel: row.snapshot.rougel,
+        exactMatch: row.snapshot.exact_match,
+        copyInput: row.snapshot.copy_input_rate,
+        repeat: row.snapshot.repeat_rate,
+        nPred: row.snapshot.n_pred,
+        learningRate: row.config.train.learning_rate ?? null,
+        epochs: row.config.train.num_train_epochs ?? null,
+        loraRank: row.config.train.lora_rank ?? null,
+        cutoffLen: row.config.train.cutoff_len ?? null,
+        note: row.config.note ?? null,
+        dataFingerprint: null,
+      })),
     });
   });
 };

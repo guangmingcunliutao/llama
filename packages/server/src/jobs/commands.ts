@@ -29,9 +29,11 @@ import {
   requireDataRun,
   resolveEvalDataRunId,
   resolveEvalSession,
+  dataRunIdForArtifact,
+  storeTrainRunId,
+  resolveEvalAdapterDir,
   startTrainFromConfig,
   summarizeRun,
-  trainRunPaths,
   validateModelSource,
 } from "@model-training/core";
 import { asFlag, asStringList, isJsonObject } from "../api/envelope.js";
@@ -63,6 +65,7 @@ const generateCommand: JobCommand = {
       runId: asFlag(body.runId),
       parentId: asFlag(body.parentId),
       label: asFlag(body.label),
+      skipCache: body.skipCache === true,
       signal: job.signal,
     });
   },
@@ -92,6 +95,7 @@ const generateEvalCommand: JobCommand = {
       sources: asStringList(body.sources),
       mode: asFlag(body.mode) as "fresh" | "resume" | "continue" | undefined,
       runId: asFlag(body.runId),
+      skipCache: body.skipCache === true,
       signal: job.signal,
     });
   },
@@ -180,10 +184,13 @@ function inferJobBackend(body: Record<string, unknown>): string {
 function evalJobRuns(outDir: string, body: Record<string, unknown>) {
   const ws = loadWorkspace(outDir);
   const trainId = asFlag(body.trainRunId) ?? ws.trainRunId;
-  const dataId = resolveEvalDataRunId(outDir, {
-    dataRunId: asFlag(body.dataRunId),
-    trainRunId: trainId,
-  });
+  const dataId =
+    asFlag(body.dataRunId) ||
+    dataRunIdForArtifact(outDir, trainId) ||
+    resolveEvalDataRunId(outDir, {
+      dataRunId: asFlag(body.dataRunId),
+      trainRunId: trainId?.startsWith("legacy:") ? trainId.slice("legacy:".length) : trainId,
+    });
   return { ws, trainId, dataId };
 }
 
@@ -225,6 +232,10 @@ const inferCommand: JobCommand = {
         bin: asFlag(body.bin) ?? cfg.lfBin,
       });
       if (!detect.ok) return detect.errors.join("\n");
+      const adapter = resolveEvalAdapterDir(cfg.outDir, trainId, asFlag(body.adapter));
+      if (!adapter) {
+        return "所选训练还没有 LoRA。请用本页登记的输出目录在 LlamaFactory 训完，或选择已有 adapter 的代训实验。";
+      }
     }
     if (backend === "http" && !asFlag(body.url) && !cfg.infer.http?.url) {
       return "http 推理需要填写接口 URL";
@@ -253,12 +264,12 @@ const inferCommand: JobCommand = {
       evalRunId = session.meta.id;
     }
     const adapter =
-      asFlag(body.adapter) || (trainId ? trainRunPaths(latest0.outDir, trainId).ckpt : undefined);
+      asFlag(body.adapter) || resolveEvalAdapterDir(latest0.outDir, trainId) || undefined;
     const cfg = await loadUserConfig({
       command: "infer",
       cwd: app.dataRoot(),
       dataRunId: dataId,
-      trainRunId: trainId,
+      trainRunId: storeTrainRunId(latest0.outDir, trainId),
       evalRunId,
     });
     if (evalRunId) {
@@ -350,7 +361,7 @@ const evaluateCommand: JobCommand = {
       command: "evaluate",
       cwd: app.dataRoot(),
       dataRunId: dataId,
-      trainRunId: trainId,
+      trainRunId: storeTrainRunId(latest0.outDir, trainId),
       evalRunId: predId ?? ws.evalRunId,
     });
     evaluate(latest, { all: true });

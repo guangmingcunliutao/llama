@@ -1,5 +1,5 @@
 /**
- * GET /api/train/env — 检测本机 LlamaFactory / Python，供训练页展示。
+ * GET /api/train/env — 检测本机 LlamaFactory / Python，供右下角环境面板。
  */
 import { detectLlamaFactory, loadUserConfig } from "@model-training/core";
 import type { FastifyPluginAsync } from "fastify";

@@ -41,7 +41,7 @@ export {
   startTrainFromConfig,
   writeDatasetInfo,
 } from "./trainJob.js";
-export { decodeSubprocessBuffer, detectLlamaFactory, findBash, findGit, findSystemPython, looksLikeLlamaFactoryHome, trainSpawnSpec } from "./llamaFactoryEnv.js";
+export { decodeSubprocessBuffer, detectLlamaFactory, findBash, findGit, findSystemPython, looksLikeLlamaFactoryHome, trainSpawnSpec, webuiSpawnSpec, cliSpawnSpec } from "./llamaFactoryEnv.js";
 export { installLlamaFactory, locateInstallScript } from "./llamaFactoryInstall.js";
 export { isJobCancelled, JobCancelledError } from "./abort.js";
 export type { LlamaFactoryDetect } from "./llamaFactoryEnv.js";
@@ -51,7 +51,10 @@ export { PEOPLE_SEARCH_DISPLAY } from "./sources/peopleDefaults.js";
 export { toShareGpt, toMessages, parseFormats } from "./format.js";
 export { normalizeRow, normalizeRows, readDatasetRows, pairKeyForRow, toLfShareGpt, toLfAlpaca } from "./normalize.js";
 export { infer } from "./infer.js";
-export { analyze } from "./analyze.js";
+export { importLfPredictions, findGeneratedPreds, lfPredsToRows } from "./inferLf.js";
+export { ensureLlamaFactoryWebui, ensureSwanLabWatch, probeHttp, swanlabLogDir } from "./lfServices.js";
+export { analyze, listAnalyzeRunRecordsPublic as listSavedAnalyzeRuns } from "./analyze.js";
+export { parseTrainYaml } from "./trainYaml.js";
 export {
   applyModelHubEnv,
   inferModelHub,
@@ -63,7 +66,24 @@ export {
   validateModelSource,
 } from "./modelSource.js";
 export type { ModelHub } from "./modelSource.js";
-export { parseTrainYaml } from "./trainYaml.js";
+export {
+  exportLfBoard,
+  lfHandoffView,
+  listLfArtifacts,
+  pathForLlamaFactory,
+  prepareLfRun,
+  prepareLfEval,
+  resolveArtifact,
+  resolveArtifactAdapter,
+  resolveEvalAdapterDir,
+  dataRunIdForArtifact,
+  storeTrainRunId,
+  knobsFromOutputDir,
+  tryExportLfBoard,
+  TERM_EVAL,
+  TERM_TRAIN,
+} from "./lfHandoff.js";
+export type { LfArtifact, LfExportManifest, LfRunMeta } from "./lfHandoff.js";
 export { detectQuantTools, findConvertNear, quantizeSource, resolveConvertScript, resolveLlamaQuantize } from "./quant.js";
 export type { QuantDetect, QuantizeFlags } from "./quant.js";
 export type {

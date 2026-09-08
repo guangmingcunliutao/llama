@@ -32,6 +32,7 @@ import { ConfirmDangerButton } from "../ui/ConfirmDangerButton";
 import { LogCard } from "../ui/LogCard";
 import { PageHeader } from "../ui/PageHeader";
 import { PipelineStrip } from "../ui/PipelineStrip";
+import { LfHandoffCard } from "../ui/LfHandoffCard";
 
 export const menu = { title: "数据生成", icon: "DatabaseOutlined", order: 10 };
 
@@ -73,6 +74,7 @@ interface GenForm {
   formats: string[];
   sources: string[];
   instruction: string;
+  skipCache: boolean;
 }
 
 const STATUS_COLOR: Record<string, string> = {
@@ -134,6 +136,7 @@ export default function DataPage() {
     form.setFieldsValue({
       mode: "fresh",
       label: "",
+      skipCache: false,
       pairsPerTerm: Number(cfg.pairsPerTerm ?? 3),
       maxWords: cfg.limitTerms == null ? 20 : Number(cfg.limitTerms),
       cleanRatioPct: clean > 1 ? clean : Math.round(clean * 100),
@@ -269,6 +272,7 @@ export default function DataPage() {
       format: values.formats.join(","),
       sources: values.sources,
       instruction: values.instruction,
+      skipCache: values.skipCache === true,
       sentence: { minLen: values.minLen, maxLen: values.maxLen },
       rate: { requestsPerMinute: values.rpm, jitterSec: values.jitterSec },
     };
@@ -291,7 +295,7 @@ export default function DataPage() {
     <>
       <PageHeader
         title="数据生成"
-        description="每次生成是一次数据实验，写在 outputs/data 下。可以从词对检索生成，也可以直接上传已经整理好的训练 jsonl，系统会按词对划分验证集。"
+        description="每次生成是一次数据实验。准备好后在本页打开 LlamaFactory 做训练和评估。"
       />
       <PipelineStrip />
 
@@ -521,6 +525,13 @@ export default function DataPage() {
           <Form.Item name="label" label="实验名称（全新 / 追加时使用）">
             <Input placeholder="例如 全量-人民网" />
           </Form.Item>
+          <Form.Item
+            name="skipCache"
+            valuePropName="checked"
+            extra="默认会读 cache/ 里上次检索的页面。勾选后重新请求接口，结果仍会写回缓存。"
+          >
+            <Checkbox>不读取检索缓存</Checkbox>
+          </Form.Item>
         </Card>
       </Form>
       <Card>
@@ -558,6 +569,8 @@ export default function DataPage() {
           </Typography.Paragraph>
         )}
       </Card>
+
+      <LfHandoffCard />
 
       {job.error && !job.busy ? <Alert type="error" showIcon message={job.error} /> : null}
 

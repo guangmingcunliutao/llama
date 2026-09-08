@@ -380,18 +380,16 @@ export function loadLfMetrics(target: string): LfSnapshot {
 }
 
 export function rankingScore(snap: LfSnapshot): { score: number; breakdown: Record<string, number> } {
+  if (!snap.n_pred) {
+    return { score: Number.NEGATIVE_INFINITY, breakdown: {} };
+  }
   const bleu = (snap.bleu4 ?? 0) / 100;
   const rouge = (snap.rougel ?? snap.rouge1 ?? 0) / 100;
   const exact = snap.exact_match ?? 0;
   const copy = snap.copy_input_rate ?? 0;
-  if (snap.bleu4 != null || snap.rougel != null || snap.n_pred) {
-    const score = 0.35 * rouge + 0.25 * bleu + 0.25 * exact + 0.15 * (1 - copy);
-    return {
-      score: +score.toFixed(6),
-      breakdown: { rouge_l: rouge, bleu4: bleu, exact_match: exact, copy_input: copy },
-    };
-  }
-  const loss = snap.eval_loss ?? snap.min_eval_loss ?? snap.train_loss;
-  if (loss == null) return { score: Number.NEGATIVE_INFINITY, breakdown: {} };
-  return { score: +(-loss).toFixed(6), breakdown: { eval_loss: loss } };
+  const score = 0.35 * rouge + 0.25 * bleu + 0.25 * exact + 0.15 * (1 - copy);
+  return {
+    score: +score.toFixed(6),
+    breakdown: { rouge_l: rouge, bleu4: bleu, exact_match: exact, copy_input: copy },
+  };
 }

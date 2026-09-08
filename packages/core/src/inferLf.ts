@@ -11,6 +11,7 @@ import {
   trainChildEnv,
   trainSpawnSpec,
 } from "./llamaFactoryEnv.js";
+import { knobsFromOutputDir } from "./lfHandoff.js";
 import { parseTrainYaml, yamlScalar } from "./trainYaml.js";
 import { readJsonlLenient, readJsonOrJsonl, writeJsonl } from "./jsonl.js";
 import { mergePreds, positionalPreds, readPreds, withStableIds } from "./evalResume.js";
@@ -111,7 +112,7 @@ export function writePredictYaml(opts: {
   return opts.file;
 }
 
-function findGeneratedPreds(dir: string): string | null {
+export function findGeneratedPreds(dir: string): string | null {
   const direct = path.join(dir, "generated_predictions.jsonl");
   if (fs.existsSync(direct)) return direct;
   if (!fs.existsSync(dir)) return null;
@@ -219,13 +220,16 @@ export async function inferLlamaFactorySlice(
   writeJsonl(evalCopy, stillMissing);
   upsertDatasetEntry(datasetDir, "term_eval", evalCopy);
 
-  const yamlPath = cfg.trainConfig;
-  const knobs = yamlPath && fs.existsSync(yamlPath) ? parseTrainYaml(fs.readFileSync(yamlPath, "utf8")) : {};
   const adapterRaw = (flags.adapter || cfg.trainOutputDir || "").trim();
   if (!adapterRaw) {
     throw new Error("没有可加载的模型。请选择一次训练实验。");
   }
   const adapterDir = path.isAbsolute(adapterRaw) ? adapterRaw : path.resolve(cfg.root, adapterRaw);
+  const yamlPath = cfg.trainConfig;
+  const knobs = {
+    ...(yamlPath && fs.existsSync(yamlPath) ? parseTrainYaml(fs.readFileSync(yamlPath, "utf8")) : {}),
+    ...knobsFromOutputDir(adapterDir, {}),
+  };
   const lora = looksLikeLoraAdapter(adapterDir);
   const full = looksLikeHfModelDir(adapterDir);
   const model =
@@ -272,4 +276,21 @@ export async function inferLlamaFactorySlice(
   writeJsonl(predFile, mergePreds(golds, existing, positionalPreds(stillMissing, lfRows)));
   onLog(`[infer] backend=llamafactory n=${golds.length} wrote=${stillMissing.length} -> ${predFile}`);
   return predFile;
+}
+
+/** 把 LlamaFactory Evaluate 写出的 generated_predictions.jsonl 转成本仓库 pred.jsonl。 */
+export function importLfPredictions(cfg: ResolvedConfig): { predFile: string; n: number; source: string } {
+  const goldFile = cfg.paths.eval;
+  const golds = withStableIds(readJsonOrJsonl<SftExample>(goldFile));
+  if (!golds.length) throw new Error(`没有验证集 ${goldFile}`);
+  const source = findGeneratedPreds(cfg.paths.lfPredict);
+  if (!source) {
+    throw new Error(
+      `预测目录里没有 generated_predictions.jsonl：${cfg.paths.lfPredict}。请先在 LlamaFactory 的 Evaluate 页跑完预测，输出目录选这一文件夹。`,
+    );
+  }
+  const lfRows = readJsonlLenient<{ predict?: string; prediction?: string }>(source);
+  const rows = lfPredsToRows(golds, lfRows);
+  writeJsonl(cfg.paths.pred, rows);
+  return { predFile: cfg.paths.pred, n: rows.length, source };
 }
