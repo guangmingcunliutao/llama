@@ -72,7 +72,7 @@ export function LfHandoffCard(props: { refreshKey?: string | number | null }) {
     try {
       const view = (await refreshLf()) ?? lfView;
       if (!view?.hasTrain) {
-        message.error("还没有 WebUI 数据集。请先在本页生成训练集（完成后会自动写到下方目录）。");
+        message.error("还没有 WebUI 数据集。请先在本页生成训练集（完成后会写入数据实验目录的 dataset_info.json）。");
         return;
       }
       let output: string | undefined = prepared?.outputDirForLf;
@@ -83,7 +83,11 @@ export function LfHandoffCard(props: { refreshKey?: string | number | null }) {
         message.error(body.error || "无法启动 LlamaFactory");
         return;
       }
-      if (output) {
+      const dataset = view.datasetDirForLf;
+      if (dataset) {
+        await navigator.clipboard.writeText(dataset).catch(() => undefined);
+        message.success("已复制数据集目录（train.dataset_dir）。输出目录见下方，需另贴到 output_dir。");
+      } else if (output) {
         await navigator.clipboard.writeText(output).catch(() => undefined);
         message.success("已复制本次输出目录，在 WebUI 里粘贴为 output_dir");
       }
@@ -156,9 +160,10 @@ export function LfHandoffCard(props: { refreshKey?: string | number | null }) {
   return (
     <Card title="交给 LlamaFactory">
       <Typography.Paragraph type="secondary">
-        训练集/验证集生成结束后会自动写出 WebUI 可用数据（不必先点本按钮）。也可单独先开 WebUI，把下方「数据集目录」贴到数据路径。数据集名{" "}
-        {lfView?.datasets?.length ? lfView.datasets.join("、") : "（先生成数据）"}
-        ；训练选 term_train，评估选 term_eval。
+        生成结束后会在该次数据实验目录写入 dataset_info.json（直接用 train.jsonl，不再另拷到
+        outputs/lf），并更新 LlamaFactory llamaboard_config 里的 train.dataset_dir。WebUI 数据路径填下方目录，数据集选
+        term_train
+        {lfView?.hasEval ? " / term_eval" : ""}。
       </Typography.Paragraph>
       <Space direction="vertical" size={8} style={{ width: "100%" }}>
         <Typography.Text copyable={lfView?.datasetDirForLf ? { text: lfView.datasetDirForLf } : false}>
@@ -186,7 +191,8 @@ export function LfHandoffCard(props: { refreshKey?: string | number | null }) {
           </Button>
         </Space>
         <Typography.Text type="secondary">
-          SwanLab 日志目录：{lfView?.swanlabLogDirForLf || "outputs/swanlog"}（Extra 里 mode=local）
+          SwanLab 日志目录：{lfView?.swanlabLogDirForLf || "outputs/swanlog"}（Extra：mode=local；目录已与训练对齐，不必在 WebUI
+          再填）
         </Typography.Text>
       </Space>
       <Collapse

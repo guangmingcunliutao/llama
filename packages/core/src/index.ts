@@ -5,7 +5,7 @@ export { generateEval } from "./generateEval.js";
 export { generate, collectSentences } from "./generate.js";
 export { evaluate, evaluateAll, ensureEvalGold, prepareEvalAll, ruleBaselineAll } from "./evaluate.js";
 export { materializeEvalSlices, hasEvalGold } from "./evalSlices.js";
-export { pidAlive, killProcessTree } from "./killTree.js";
+export { pidAlive, killPidTree, killProcessTree } from "./killTree.js";
 export {
   createRun,
   dataRunPaths,
@@ -63,7 +63,8 @@ export { toShareGpt, toMessages, parseFormats } from "./format.js";
 export { normalizeRow, normalizeRows, readDatasetRows, pairKeyForRow, toLfShareGpt, toLfAlpaca } from "./normalize.js";
 export { infer } from "./infer.js";
 export { importLfPredictions, findGeneratedPreds, lfPredsToRows } from "./inferLf.js";
-export { ensureLlamaFactoryWebui, ensureSwanLabWatch, probeHttp, swanlabLogDir } from "./lfServices.js";
+export { ensureLlamaFactoryCompat, patchSwanlabCloudKey } from "./llamaFactoryCompat.js";
+export { ensureLlamaFactoryWebui, ensureSwanLabWatch, ensureSwanlabLogJunction, probeHttp, swanlabLogDir } from "./lfServices.js";
 export { analyze, listAnalyzeRunRecordsPublic as listSavedAnalyzeRuns } from "./analyze.js";
 export { parseTrainYaml } from "./trainYaml.js";
 export {
@@ -79,6 +80,7 @@ export {
 export type { ModelHub } from "./modelSource.js";
 export {
   exportLfBoard,
+  exportLfBoardForDataRun,
   lfHandoffView,
   listLfArtifacts,
   pathForLlamaFactory,
@@ -91,6 +93,8 @@ export {
   storeTrainRunId,
   knobsFromOutputDir,
   tryExportLfBoard,
+  syncLlamaboardDatasetDir,
+  currentLfDatasetDir,
   TERM_EVAL,
   TERM_TRAIN,
 } from "./lfHandoff.js";

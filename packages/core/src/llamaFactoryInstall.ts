@@ -15,6 +15,7 @@ import {
   findSystemPython,
   looksLikeLlamaFactoryHome,
 } from "./llamaFactoryEnv.js";
+import { ensureLlamaFactoryCompat } from "./llamaFactoryCompat.js";
 
 const REPO = "https://github.com/hiyouga/LlamaFactory.git";
 
@@ -182,6 +183,11 @@ async function installByClone(opts: InstallLlamaFactoryOptions): Promise<{ home:
 
 export async function installLlamaFactory(opts: InstallLlamaFactoryOptions): Promise<{ home: string }> {
   const script = locateInstallScript();
-  if (script) return runInstallScript(script, opts);
-  return installByClone(opts);
+  const result = script ? await runInstallScript(script, opts) : await installByClone(opts);
+  const detect = detectLlamaFactory({ home: result.home });
+  if (detect.ok) {
+    ensureLlamaFactoryCompat(detect);
+    opts.onLog?.("[lf-compat] 已应用运行时兼容补丁");
+  }
+  return result;
 }

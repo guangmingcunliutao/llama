@@ -10,13 +10,25 @@ export function pidAlive(pid: number | null | undefined): boolean {
   }
 }
 
-/** 结束子进程及其后代（Windows 上 LlamaFactory 常有孙进程占 GPU）。 */
-export function killProcessTree(child: ChildProcess): void {
-  const pid = child.pid;
-  if (pid == null) return;
+/** 按 pid 结束进程树（Windows taskkill /T）。 */
+export function killPidTree(pid: number | null | undefined): void {
+  if (pid == null || pid <= 0) return;
   if (process.platform === "win32") {
     spawnSync("taskkill", ["/pid", String(pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" });
     return;
   }
-  child.kill("SIGTERM");
+  try {
+    process.kill(-pid, "SIGTERM");
+  } catch {
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch {
+      /* already gone */
+    }
+  }
+}
+
+/** 结束子进程及其后代（Windows 上 LlamaFactory 常有孙进程占 GPU）。 */
+export function killProcessTree(child: ChildProcess): void {
+  killPidTree(child.pid);
 }

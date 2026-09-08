@@ -5,10 +5,12 @@ import { describe, expect, it } from "vitest";
 import { loadUserConfig } from "../config.js";
 import {
   exportLfBoard,
+  exportLfBoardForDataRun,
   listLfArtifacts,
   prepareLfRun,
   prepareLfEval,
   resolveArtifact,
+  syncLlamaboardDatasetDir,
   TERM_EVAL,
   TERM_TRAIN,
 } from "../lfHandoff.js";
@@ -33,9 +35,10 @@ function sampleRow(input: string, output: string) {
 async function seedData(dir: string, withEval: boolean) {
   fs.writeFileSync(
     path.join(dir, "model-training.config.json"),
-    `${JSON.stringify({ outDir: "./outputs", sources: [] })}\n`,
+    `${JSON.stringify({ outDir: "./outputs", sources: [], llamafactory: { home: "./LlamaFactory" } })}\n`,
     "utf8",
   );
+  fs.mkdirSync(path.join(dir, "LlamaFactory"), { recursive: true });
   const cfg0 = await loadUserConfig({ command: "status", cwd: dir });
   const data = createRun(cfg0.outDir, { kind: "data", mode: "fresh", label: "seed" });
   const paths = dataRunPaths(cfg0.outDir, data.id);
@@ -49,24 +52,22 @@ async function seedData(dir: string, withEval: boolean) {
 }
 
 describe("lfHandoff", () => {
-  it("exports alpaca term_train/term_eval and writes manifest outside runs", async () => {
+  it("writes dataset_info into the data run dir without copying jsonl", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mt-lf-ex-"));
     const cfg = await seedData(dir, true);
+    const dataId = JSON.parse(fs.readFileSync(path.join(cfg.outDir, "workspace.json"), "utf8")).dataRunId as string;
+    const paths = dataRunPaths(cfg.outDir, dataId);
     const result = exportLfBoard(cfg);
+    expect(result.datasetDir).toBe(paths.dir);
     expect(result.datasets).toEqual([TERM_TRAIN, TERM_EVAL]);
-    const info = JSON.parse(fs.readFileSync(path.join(result.datasetDir, "dataset_info.json"), "utf8")) as Record<
+    const info = JSON.parse(fs.readFileSync(path.join(paths.dir, "dataset_info.json"), "utf8")) as Record<
       string,
       { file_name: string }
     >;
-    expect(info[TERM_TRAIN]?.file_name).toBe(`train/${TERM_TRAIN}.jsonl`);
-    expect(info[TERM_EVAL]?.file_name).toBe(`eval/${TERM_EVAL}.jsonl`);
-    expect(countJsonl(path.join(result.datasetDir, "train", `${TERM_TRAIN}.jsonl`))).toBe(2);
-    const manifest = JSON.parse(fs.readFileSync(path.join(result.datasetDir, "manifest.json"), "utf8")) as {
-      trainRows: number;
-      evalRows: number;
-    };
-    expect(manifest.trainRows).toBe(2);
-    expect(manifest.evalRows).toBe(1);
+    expect(info[TERM_TRAIN]?.file_name).toBe("train.jsonl");
+    expect(info[TERM_EVAL]?.file_name).toBe("eval/eval.jsonl");
+    expect(countJsonl(paths.train)).toBe(2);
+    expect(fs.existsSync(path.join(cfg.lfExportDir, "by-run"))).toBe(false);
   });
 
   it("omits term_eval when there is no eval file", async () => {
@@ -79,6 +80,26 @@ describe("lfHandoff", () => {
       unknown
     >;
     expect(info[TERM_EVAL]).toBeUndefined();
+  });
+
+  it("two data runs each keep their own dataset_info; no shared overwrite", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mt-lf-multi-"));
+    const cfg1 = await seedData(dir, false);
+    const id1 = JSON.parse(fs.readFileSync(path.join(cfg1.outDir, "workspace.json"), "utf8")).dataRunId as string;
+    exportLfBoard(cfg1);
+
+    const data2 = createRun(cfg1.outDir, { kind: "data", mode: "fresh", label: "second" });
+    const paths2 = dataRunPaths(cfg1.outDir, data2.id);
+    fs.mkdirSync(paths2.evalDir, { recursive: true });
+    fs.writeFileSync(paths2.train, `${sampleRow("错句新", "对句新")}\n`, "utf8");
+    patchWorkspace(cfg1.outDir, { dataRunId: data2.id });
+    const cfg2 = await loadUserConfig({ command: "export-lf", cwd: dir });
+    exportLfBoard(cfg2);
+
+    expect(fs.existsSync(path.join(dataRunPaths(cfg2.outDir, id1).dir, "dataset_info.json"))).toBe(true);
+    expect(fs.existsSync(path.join(paths2.dir, "dataset_info.json"))).toBe(true);
+    expect(countJsonl(dataRunPaths(cfg2.outDir, id1).train)).toBe(2);
+    expect(countJsonl(paths2.train)).toBe(1);
   });
 
   it("tryExportLfBoard follows workspace even when cfg.paths still point at .unselected", async () => {
@@ -94,8 +115,25 @@ describe("lfHandoff", () => {
     };
     expect(fs.existsSync(stale.paths.trainSplit)).toBe(false);
     const result = tryExportLfBoard(stale);
-    expect(result?.datasets).toEqual([TERM_TRAIN]);
-    expect(fs.existsSync(path.join(cfg.lfExportDir, "dataset_info.json"))).toBe(true);
+    expect(result?.datasets).toContain(TERM_TRAIN);
+    expect(fs.existsSync(path.join(result!.datasetDir, "dataset_info.json"))).toBe(true);
+  });
+
+  it("syncs train.dataset_dir into llamaboard_config yaml", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mt-lf-yaml-"));
+    const cfg = await seedData(dir, false);
+    const dataId = JSON.parse(fs.readFileSync(path.join(cfg.outDir, "workspace.json"), "utf8")).dataRunId as string;
+    const datasetDir = dataRunPaths(cfg.outDir, dataId).dir;
+    const home = path.join(dir, "LlamaFactory");
+    const configDir = path.join(home, "llamaboard_config");
+    fs.mkdirSync(configDir, { recursive: true });
+    const yamlPath = path.join(configDir, "2026-09-08-15-43-30.yaml");
+    fs.writeFileSync(yamlPath, "train.dataset_dir: E:/old/path\ntrain.dataset:\n- term_train\n", "utf8");
+    const synced = syncLlamaboardDatasetDir(home, datasetDir);
+    expect(synced).toBe(yamlPath);
+    const text = fs.readFileSync(yamlPath, "utf8");
+    expect(text).toContain(`train.dataset_dir: ${datasetDir.replaceAll("\\", "/")}`);
+    expect(text).not.toContain("E:/old/path");
   });
 
   it("prepares output dir with meta beside it, not inside", async () => {
@@ -124,5 +162,6 @@ describe("lfHandoff", () => {
     expect(evalPrep.evalDataset).toBe(TERM_EVAL);
     expect(fs.existsSync(evalPrep.outputDir)).toBe(true);
     expect(evalPrep.adapterDir).toBe(prepared.outputDir);
+    expect(evalPrep.datasetDir).toContain(`${path.sep}data${path.sep}`);
   });
 });

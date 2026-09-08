@@ -11,11 +11,10 @@ import { dataRunPaths, trainRunPaths } from "./runs/paths.js";
 import { listRuns, loadWorkspace, readRun, requireDataRun } from "./runs/store.js";
 import { resolveEvalSession } from "./runs/evalSession.js";
 import { hasEvalGold } from "./evalSlices.js";
-import { countJsonl, readJsonl } from "./jsonl.js";
-import { toLfAlpaca } from "./normalize.js";
+import { countJsonl } from "./jsonl.js";
 import { parseTrainYaml } from "./trainYaml.js";
 import { isRecord } from "./util.js";
-import type { ExportLfResult, ResolvedConfig, SftExample, TrainKnobs } from "./types.js";
+import type { ExportLfResult, ResolvedConfig, TrainKnobs } from "./types.js";
 
 export const TERM_TRAIN = "term_train";
 export const TERM_EVAL = "term_eval";
@@ -110,15 +109,6 @@ export function alpacaEntry(fileName: string): Record<string, unknown> {
   };
 }
 
-function writeAlpacaJsonl(file: string, rows: SftExample[]): void {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(
-    file,
-    rows.map((row) => JSON.stringify(toLfAlpaca(row))).join("\n") + (rows.length ? "\n" : ""),
-    "utf8",
-  );
-}
-
 export function knobsFromOutputDir(dir: string, fallback: TrainKnobs = {}): TrainKnobs {
   const merged: TrainKnobs = { ...fallback };
   const yamlFiles = fs.existsSync(dir)
@@ -154,58 +144,73 @@ export function knobsFromOutputDir(dir: string, fallback: TrainKnobs = {}): Trai
   return merged;
 }
 
-/** 写出 outputs/lf：train/ eval/ dataset_info.json + manifest.json。 */
-export function exportLfBoard(cfg: ResolvedConfig, datasetDir = cfg.lfExportDir): ExportLfResult {
+/**
+ * 在数据实验目录内写 dataset_info.json（直接用已有 train.jsonl / eval），不另拷一份。
+ * 并同步 LlamaFactory llamaboard_config 里的 train.dataset_dir。
+ */
+export function exportLfBoard(cfg: ResolvedConfig, _ignoredDatasetDir?: string): ExportLfResult {
   const ws = loadWorkspace(cfg.outDir);
   const dataId = ws.dataRunId;
-  const dataPaths = dataId ? dataRunPaths(cfg.outDir, dataId) : null;
-  const trainFile = dataPaths?.train || cfg.paths.trainSplit;
-  const evalSrc = dataPaths?.eval || cfg.paths.eval;
+  if (!dataId) throw new Error("没有选中的数据实验，请先生成训练数据");
+  return exportLfBoardForDataRun(cfg, dataId);
+}
+
+/** 为指定数据实验生成 WebUI 可用的 dataset_info，并可选同步 llamaboard。 */
+export function exportLfBoardForDataRun(cfg: ResolvedConfig, dataRunId: string): ExportLfResult {
+  const dataPaths = dataRunPaths(cfg.outDir, dataRunId);
+  const datasetDir = dataPaths.dir;
+  const trainFile = dataPaths.train;
   if (!fs.existsSync(trainFile)) {
     throw new Error(`没有训练集 ${trainFile}，请先生成训练数据`);
   }
-  const trainRows = readJsonl<SftExample>(trainFile, "empty");
-  if (!trainRows.length) throw new Error(`训练集为空: ${trainFile}`);
-
-  const trainOut = path.join(datasetDir, "train", `${TERM_TRAIN}.jsonl`);
-  const evalOut = path.join(datasetDir, "eval", `${TERM_EVAL}.jsonl`);
-  writeAlpacaJsonl(trainOut, trainRows);
+  const trainRows = countJsonl(trainFile);
+  if (!trainRows) throw new Error(`训练集为空: ${trainFile}`);
 
   const info: Record<string, unknown> = {
-    [TERM_TRAIN]: alpacaEntry(`train/${TERM_TRAIN}.jsonl`),
+    [TERM_TRAIN]: alpacaEntry("train.jsonl"),
   };
-  const files: Record<string, string> = { train: trainOut };
+  const files: Record<string, string> = { train: trainFile };
   const datasets = [TERM_TRAIN];
   let evalRows = 0;
   let evalFingerprint: string | null = null;
 
-  if (fs.existsSync(evalSrc) && countJsonl(evalSrc) > 0) {
-    const rows = readJsonl<SftExample>(evalSrc, "empty");
-    writeAlpacaJsonl(evalOut, rows);
-    info[TERM_EVAL] = alpacaEntry(`eval/${TERM_EVAL}.jsonl`);
-    files.eval = evalOut;
+  if (fs.existsSync(dataPaths.eval) && countJsonl(dataPaths.eval) > 0) {
+    // 相对 dataset_dir（数据实验根）的路径
+    info[TERM_EVAL] = alpacaEntry("eval/eval.jsonl");
+    files.eval = dataPaths.eval;
     datasets.push(TERM_EVAL);
-    evalRows = rows.length;
-    evalFingerprint = fingerprintFile(evalSrc);
-  } else if (fs.existsSync(evalOut)) {
-    fs.rmSync(evalOut);
+    evalRows = countJsonl(dataPaths.eval);
+    evalFingerprint = fingerprintFile(dataPaths.eval);
   }
 
   const infoPath = path.join(datasetDir, "dataset_info.json");
   writeJson(infoPath, info);
 
   const manifest: LfExportManifest = {
-    dataRunId: dataId,
+    dataRunId,
     trainFingerprint: fingerprintFile(trainFile),
     evalFingerprint,
-    trainRows: trainRows.length,
+    trainRows,
     evalRows,
     datasets,
     exportedAt: new Date().toISOString(),
   };
   writeJson(path.join(datasetDir, "manifest.json"), manifest);
 
-  const result: ExportLfResult = {
+  const synced = syncLlamaboardDatasetDir(cfg.lfHome, datasetDir);
+  console.log(
+    "[export-lf]",
+    JSON.stringify({
+      datasetDir,
+      dataRunId,
+      datasets,
+      trainRows,
+      evalRows,
+      llamaboardSynced: synced,
+    }),
+  );
+
+  return {
     datasetDir,
     datasetInfo: infoPath,
     prefix: "term",
@@ -213,23 +218,59 @@ export function exportLfBoard(cfg: ResolvedConfig, datasetDir = cfg.lfExportDir)
     files,
     formats: ["alpaca"],
   };
-  console.log("[export-lf]", JSON.stringify({ datasetDir, datasets, trainRows: trainRows.length, evalRows }));
-  return result;
+}
+
+/**
+ * 把 LlamaFactory/llamaboard_config 下 yaml 的 train.dataset_dir 写成当前数据实验路径。
+ * 优先改最近修改的配置；若没有则新建一份。
+ */
+export function syncLlamaboardDatasetDir(lfHome: string | null | undefined, datasetDir: string): string | null {
+  if (!lfHome || !fs.existsSync(lfHome)) return null;
+  const configDir = path.join(lfHome, "llamaboard_config");
+  fs.mkdirSync(configDir, { recursive: true });
+  const abs = pathForLlamaFactory(datasetDir);
+  const files = fs
+    .readdirSync(configDir)
+    .filter((name) => name.endsWith(".yaml") || name.endsWith(".yml"))
+    .map((name) => path.join(configDir, name))
+    .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
+
+  const target = files[0] ?? path.join(configDir, `${timestampId()}.yaml`);
+  let text = fs.existsSync(target) ? fs.readFileSync(target, "utf8") : "";
+  if (/^train\.dataset_dir\s*:/m.test(text)) {
+    text = text.replace(/^train\.dataset_dir\s*:.*$/m, `train.dataset_dir: ${abs}`);
+  } else if (text.trim()) {
+    text = `${text.replace(/\s*$/, "")}\ntrain.dataset_dir: ${abs}\n`;
+  } else {
+    // 最小可加载片段：WebUI「加载配置」需要较完整字段；仅写 dataset 相关时用户仍可手改其它项
+    text = [
+      "train.dataset_dir: " + abs,
+      "train.dataset:",
+      `- ${TERM_TRAIN}`,
+      "train.training_stage: Supervised Fine-Tuning",
+      "",
+    ].join("\n");
+  }
+  fs.writeFileSync(target, text.endsWith("\n") ? text : `${text}\n`, "utf8");
+  return target;
 }
 
 /** 以 workspace 当前 dataRun 为准（生成过程中 cfg.paths 可能仍是旧实验）。 */
-function resolveCurrentTrainFile(cfg: ResolvedConfig): string | null {
+function resolveCurrentDataRunId(cfg: ResolvedConfig): string | null {
   const ws = loadWorkspace(cfg.outDir);
-  const trainFile = ws.dataRunId ? dataRunPaths(cfg.outDir, ws.dataRunId).train : cfg.paths.trainSplit;
-  if (!fs.existsSync(trainFile) || countJsonl(trainFile) === 0) return null;
-  return trainFile;
+  if (ws.dataRunId) {
+    const trainFile = dataRunPaths(cfg.outDir, ws.dataRunId).train;
+    if (fs.existsSync(trainFile) && countJsonl(trainFile) > 0) return ws.dataRunId;
+  }
+  return null;
 }
 
-/** 生成/导入结束后同步写出 WebUI 数据集；失败只打日志，不打断主流程。 */
+/** 生成/导入结束后：在数据目录写 dataset_info，并同步 WebUI dataset_dir。 */
 export function tryExportLfBoard(cfg: ResolvedConfig): ExportLfResult | null {
   try {
-    if (!resolveCurrentTrainFile(cfg)) return null;
-    return exportLfBoard(cfg);
+    const id = resolveCurrentDataRunId(cfg);
+    if (!id) return null;
+    return exportLfBoardForDataRun(cfg, id);
   } catch (err) {
     console.warn(`[export-lf] ${err instanceof Error ? err.message : String(err)}`);
     return null;
@@ -238,6 +279,15 @@ export function tryExportLfBoard(cfg: ResolvedConfig): ExportLfResult | null {
 
 export function readExportManifest(datasetDir: string): LfExportManifest | null {
   return readJson<LfExportManifest>(path.join(datasetDir, "manifest.json"));
+}
+
+export function currentLfDatasetDir(cfg: ResolvedConfig): string | null {
+  const id = loadWorkspace(cfg.outDir).dataRunId;
+  if (!id) return null;
+  const dir = dataRunPaths(cfg.outDir, id).dir;
+  return fs.existsSync(path.join(dir, "dataset_info.json")) || fs.existsSync(dataRunPaths(cfg.outDir, id).train)
+    ? dir
+    : null;
 }
 
 function allocateLfId(outDir: string, label: string): string {
@@ -404,7 +454,7 @@ export function prepareLfEval(
   if (!hasEvalGold(data.paths)) {
     throw new Error(`没有验证集 ${data.paths.eval}，请先生成验证集`);
   }
-  tryExportLfBoard(cfg);
+  exportLfBoardForDataRun(cfg, data.meta.id);
   const session = resolveEvalSession(cfg.outDir, {
     mode: "fresh",
     trainRunId,
@@ -412,9 +462,9 @@ export function prepareLfEval(
     label: flags.label,
   });
   fs.mkdirSync(session.paths.lfPredict, { recursive: true });
-  const datasetDir = cfg.lfExportDir;
+  const datasetDir = data.paths.dir;
   const info = readJson<Record<string, unknown>>(path.join(datasetDir, "dataset_info.json")) ?? {};
-  if (!info[TERM_EVAL]) throw new Error("导出目录里没有 term_eval，请先生成验证集并重新导出");
+  if (!info[TERM_EVAL]) throw new Error("该数据实验没有 term_eval，请先生成验证集");
   return {
     evalRunId: session.meta.id,
     datasetDir,
@@ -440,7 +490,7 @@ export function lfHandoffView(cfg: ResolvedConfig): {
   swanlabLogDirForLf: string;
   artifacts: LfArtifact[];
 } {
-  const datasetDir = cfg.lfExportDir;
+  const datasetDir = currentLfDatasetDir(cfg) || cfg.lfExportDir;
   const manifest = readExportManifest(datasetDir);
   const info = readJson<Record<string, unknown>>(path.join(datasetDir, "dataset_info.json")) ?? {};
   const swanDir = path.join(cfg.outDir, "swanlog");
