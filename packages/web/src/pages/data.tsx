@@ -570,7 +570,7 @@ export default function DataPage() {
         )}
       </Card>
 
-      <LfHandoffCard />
+      <LfHandoffCard refreshKey={`${job.job ?? ""}:${job.busy ? "busy" : "idle"}:${job.error ?? ""}:${runs.selected?.id ?? ""}`} />
 
       {job.error && !job.busy ? <Alert type="error" showIcon message={job.error} /> : null}
 

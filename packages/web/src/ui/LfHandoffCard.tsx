@@ -1,4 +1,4 @@
-/** 数据页上跳转到 LlamaFactory：导出目录、拉起 WebUI。 */
+/** 数据页上跳转到 LlamaFactory：展示已导出目录、拉起 WebUI。数据集在生成完成时已写入 outputs/lf。 */
 import { Button, Card, Collapse, Input, Select, Space, Typography } from "antd";
 import { App as AntdApp } from "antd";
 import { useEffect, useState } from "react";
@@ -22,7 +22,7 @@ interface LfView {
   artifacts: LfArtifact[];
 }
 
-export function LfHandoffCard() {
+export function LfHandoffCard(props: { refreshKey?: string | number | null }) {
   const { message } = AntdApp.useApp();
   const [lfView, setLfView] = useState<LfView | null>(null);
   const [slotLabel, setSlotLabel] = useState("");
@@ -45,18 +45,7 @@ export function LfHandoffCard() {
 
   useEffect(() => {
     void refreshLf();
-  }, []);
-
-  async function ensureExport(): Promise<boolean> {
-    const res = await fetch("/api/lf/export", { method: "POST" });
-    const body = (await res.json()) as { ok?: boolean; error?: string };
-    if (!body.ok) {
-      message.error(body.error || "请先生成训练数据");
-      return false;
-    }
-    await refreshLf();
-    return true;
-  }
+  }, [props.refreshKey]);
 
   async function prepareOutput(): Promise<string | null> {
     const res = await fetch("/api/lf/prepare", {
@@ -81,7 +70,11 @@ export function LfHandoffCard() {
   async function openLlamaFactory(): Promise<void> {
     setOpening(true);
     try {
-      if (!(await ensureExport())) return;
+      const view = (await refreshLf()) ?? lfView;
+      if (!view?.hasTrain) {
+        message.error("还没有 WebUI 数据集。请先在本页生成训练集（完成后会自动写到下方目录）。");
+        return;
+      }
       let output: string | undefined = prepared?.outputDirForLf;
       if (!output) output = (await prepareOutput()) ?? undefined;
       const res = await fetch("/api/lf/webui/ensure", { method: "POST" });
@@ -94,7 +87,7 @@ export function LfHandoffCard() {
         await navigator.clipboard.writeText(output).catch(() => undefined);
         message.success("已复制本次输出目录，在 WebUI 里粘贴为 output_dir");
       }
-      window.open(body.data?.url || lfView?.webuiUrl || "http://127.0.0.1:7860", "_blank", "noopener");
+      window.open(body.data?.url || view.webuiUrl || "http://127.0.0.1:7860", "_blank", "noopener");
     } finally {
       setOpening(false);
     }
@@ -163,7 +156,7 @@ export function LfHandoffCard() {
   return (
     <Card title="交给 LlamaFactory">
       <Typography.Paragraph type="secondary">
-        训练和评估都在 LlamaFactory WebUI 里做。点按钮会自动拉起服务（7860）。数据集名{" "}
+        训练集/验证集生成结束后会自动写出 WebUI 可用数据（不必先点本按钮）。也可单独先开 WebUI，把下方「数据集目录」贴到数据路径。数据集名{" "}
         {lfView?.datasets?.length ? lfView.datasets.join("、") : "（先生成数据）"}
         ；训练选 term_train，评估选 term_eval。
       </Typography.Paragraph>
@@ -176,7 +169,7 @@ export function LfHandoffCard() {
             本次输出目录：{prepared.outputDirForLf}
           </Typography.Text>
         ) : (
-          <Typography.Text type="secondary">打开时会自动建一个空的输出目录。</Typography.Text>
+          <Typography.Text type="secondary">打开时会自动建一个空的输出目录（与数据集目录分开）。</Typography.Text>
         )}
         <Space wrap>
           <Input

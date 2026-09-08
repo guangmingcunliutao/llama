@@ -249,7 +249,48 @@ export function trainChildEnv(
   if (detect.home && existsDir(path.join(detect.home, "src", "llamafactory"))) {
     env.PYTHONPATH = path.join(detect.home, "src");
   }
+  // 顺带把 venv 的 Scripts/bin 提前进 PATH（shell/其它工具能找到）；WebUI 点训练的 Popen 另见 ensureWindowsWebuiCliShim。
+  const binDirs: string[] = [];
+  if (detect.bin) binDirs.push(path.dirname(detect.bin));
+  if (detect.python) binDirs.push(path.dirname(detect.python));
+  if (binDirs.length) {
+    const prefix = [...new Set(binDirs)].join(path.delimiter);
+    env.PATH = env.PATH ? `${prefix}${path.delimiter}${env.PATH}` : prefix;
+  }
   return env;
+}
+
+/**
+ * Windows 上 Gradio WebUI 会 `Popen(["llamafactory-cli", "train", ...])`。
+ * CreateProcess 把首参当 lpApplicationName 时不搜 PATH，只在 WebUI 的 cwd（通常是 LlamaFactory 根）找同名 .exe。
+ * 本仓库用 `python -m` 拉起 WebUI，cwd 里没有该 exe → WinError 2。在 home 放一份启动器副本即可，无需改 LF 源码。
+ */
+export function ensureWindowsWebuiCliShim(detect: LlamaFactoryDetect): string | null {
+  if (!win() || !detect.home || !existsDir(detect.home)) return null;
+  const dest = path.join(detect.home, "llamafactory-cli.exe");
+  if (existsFile(dest)) return dest;
+
+  const candidates: string[] = [];
+  if (detect.bin) candidates.push(detect.bin);
+  if (detect.python) candidates.push(path.join(path.dirname(detect.python), "llamafactory-cli.exe"));
+  const fromHome = cliInHome(detect.home);
+  if (fromHome) candidates.push(fromHome);
+
+  const src = candidates.find((file) => {
+    const lower = file.toLowerCase();
+    return lower.endsWith(".exe") && existsFile(file) && path.resolve(file) !== path.resolve(dest);
+  });
+  if (!src) return null;
+
+  try {
+    fs.copyFileSync(src, dest);
+    return dest;
+  } catch (err) {
+    console.warn(
+      `[lf] 无法写入 ${dest}（Windows 训练启动需要）：${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
+  }
 }
 
 export function cliSpawnSpec(

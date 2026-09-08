@@ -217,9 +217,18 @@ export function exportLfBoard(cfg: ResolvedConfig, datasetDir = cfg.lfExportDir)
   return result;
 }
 
+/** 以 workspace 当前 dataRun 为准（生成过程中 cfg.paths 可能仍是旧实验）。 */
+function resolveCurrentTrainFile(cfg: ResolvedConfig): string | null {
+  const ws = loadWorkspace(cfg.outDir);
+  const trainFile = ws.dataRunId ? dataRunPaths(cfg.outDir, ws.dataRunId).train : cfg.paths.trainSplit;
+  if (!fs.existsSync(trainFile) || countJsonl(trainFile) === 0) return null;
+  return trainFile;
+}
+
+/** 生成/导入结束后同步写出 WebUI 数据集；失败只打日志，不打断主流程。 */
 export function tryExportLfBoard(cfg: ResolvedConfig): ExportLfResult | null {
   try {
-    if (!fs.existsSync(cfg.paths.trainSplit) || countJsonl(cfg.paths.trainSplit) === 0) return null;
+    if (!resolveCurrentTrainFile(cfg)) return null;
     return exportLfBoard(cfg);
   } catch (err) {
     console.warn(`[export-lf] ${err instanceof Error ? err.message : String(err)}`);

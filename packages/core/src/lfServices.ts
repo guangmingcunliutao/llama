@@ -7,6 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   detectLlamaFactory,
+  ensureWindowsWebuiCliShim,
   trainChildEnv,
   webuiSpawnSpec,
   type LlamaFactoryDetect,
@@ -133,6 +134,10 @@ export async function ensureLlamaFactoryWebui(opts: {
   const url = opts.url || process.env.LLAMAFACTORY_WEBUI_URL || "http://127.0.0.1:7860";
   const pidFile = path.join(metaDir(opts.outDir), "webui.pid.json");
   const logFile = path.join(metaDir(opts.outDir), "webui.log");
+  const detectEarly = detectLlamaFactory({ home: opts.home, bin: opts.bin });
+  // 已在跑的 WebUI 点「开始训练」也会 Popen；cwd 里缺 exe 时先补上，无需重启即可生效。
+  if (detectEarly.ok) ensureWindowsWebuiCliShim(detectEarly);
+
   if (await probeHttp(url)) {
     return { url, started: false, already: true, pid: readPid(pidFile)?.pid ?? null, logFile };
   }
@@ -142,8 +147,9 @@ export async function ensureLlamaFactoryWebui(opts: {
     if (!ok) throw new Error(`LlamaFactory WebUI 进程 ${rec.pid} 已在跑，但 ${url} 仍打不开。看 ${logFile}`);
     return { url, started: false, already: true, pid: rec.pid, logFile };
   }
-  const detect = detectLlamaFactory({ home: opts.home, bin: opts.bin });
+  const detect = detectEarly.ok ? detectEarly : detectLlamaFactory({ home: opts.home, bin: opts.bin });
   if (!detect.ok) throw new Error(detect.errors.join("\n") || "未找到 LlamaFactory，请在设置里填写安装目录");
+  ensureWindowsWebuiCliShim(detect);
   const spec = webuiSpawnSpec(detect);
   const port = String(portOf(url, 7860));
   const env = trainChildEnv(detect, {

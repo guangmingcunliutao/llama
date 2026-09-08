@@ -81,6 +81,23 @@ describe("lfHandoff", () => {
     expect(info[TERM_EVAL]).toBeUndefined();
   });
 
+  it("tryExportLfBoard follows workspace even when cfg.paths still point at .unselected", async () => {
+    const { tryExportLfBoard } = await import("../lfHandoff.js");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mt-lf-stale-"));
+    const cfg = await seedData(dir, false);
+    const stale = {
+      ...cfg,
+      paths: {
+        ...cfg.paths,
+        trainSplit: path.join(cfg.outDir, "data", ".unselected", "train.jsonl"),
+      },
+    };
+    expect(fs.existsSync(stale.paths.trainSplit)).toBe(false);
+    const result = tryExportLfBoard(stale);
+    expect(result?.datasets).toEqual([TERM_TRAIN]);
+    expect(fs.existsSync(path.join(cfg.lfExportDir, "dataset_info.json"))).toBe(true);
+  });
+
   it("prepares output dir with meta beside it, not inside", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mt-lf-prep-"));
     const cfg = await seedData(dir, true);
