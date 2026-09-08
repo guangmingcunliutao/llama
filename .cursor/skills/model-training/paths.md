@@ -1,6 +1,6 @@
 # 路径速查
 
-相对仓库根。`<id>` 形如 `20260903-142347-wx`。
+相对仓库根。`<id>` 形如 `20260908-134219-test1`。
 
 ## 运行时（不提交）
 
@@ -8,27 +8,44 @@
 | --- | --- |
 | `model-training.config.json` | Web/CLI 共用配置 |
 | `data/term_pairs.jsonl` | 词对字典 |
-| `cache/` | 检索缓存 |
+| `cache/` | 检索缓存（`--no-cache` / 勾选可跳过读取） |
 | `outputs/workspace.json` | 当前 data/train/eval 指针 |
-| `outputs/data/<id>/train.jsonl` | 该次数据实验的训练集 |
+| `outputs/data/<id>/train.jsonl` | 该次数据实验训练集 |
 | `outputs/data/<id>/eval/` | 验证切片 |
-| `outputs/train/<id>/train.yaml` | 该次训练 yaml |
-| `outputs/train/<id>/lf/term_sft.jsonl` | 拷给 LlamaFactory 的数据 |
-| `outputs/train/<id>/ckpt/` | checkpoint 与最终 LoRA |
-| `outputs/eval/<id>/` | 评估预测与指标 |
+| `outputs/lf/` | 给 WebUI 的稳定 `dataset_dir` |
+| `outputs/lf/dataset_info.json` | `term_train` / `term_eval` |
+| `outputs/lf/manifest.json` | 数据实验 id、指纹 |
+| `outputs/lf-runs/<id>/` | 每次训练的 `output_dir`（空目录先建好） |
+| `outputs/lf-runs/<id>/training_args.yaml` | 训完后的超参真相 |
+| `outputs/lf-runs/<id>/llamaboard_config.yaml` | WebUI 控件快照 |
+| `outputs/lf-meta/<id>.json` | 本仓库登记（dataRunId、指纹、备注） |
+| `outputs/lf-meta/webui.pid.json` | 本机拉起的 WebUI 进程记录 |
+| `outputs/eval/<id>/lf-predict/` | Evaluate 输出目录 |
+| `outputs/eval/<id>/infer/pred.jsonl` | 导入后的本仓库预测 |
+| `outputs/swanlog/` | SwanLab local 日志 |
+| `outputs/train/<id>/` | 旧代训（保留） |
+| `outputs/reports/` | 调参报告 / compare / best |
+
+## LlamaFactory 安装旁（相对 LF 工作目录）
+
+| 路径 | 作用 |
+| --- | --- |
+| `LlamaFactory/llamaboard_cache/user_config.yaml` | 语言、上次模型；**无**训练超参 |
+| `LlamaFactory/llamaboard_cache/ds_*.json` | DeepSpeed 模板 |
+| `LlamaFactory/llamaboard_config/` | 用户手动「保存配置」 |
 
 ## 源码
 
 | 路径 | 作用 |
 | --- | --- |
 | `packages/web/src/pages/` | 页面；`export const menu` 生成侧栏 |
-| `packages/web/src/jobs/` | 任务轮询与 cancel |
+| `packages/web/src/ui/LfHandoffCard.tsx` | 数据页：打开 LF / SwanLab / 评估折叠 |
+| `packages/core/src/lfHandoff.ts` | 导出、占坑、扫描 artifacts |
+| `packages/core/src/lfServices.ts` | 按需拉起 webui / swanlab watch |
+| `packages/server/src/routes/lf.ts` | `/api/lf`、export、prepare、webui、score |
 | `packages/core/src/runs/paths.ts` | run 目录约定（真相） |
-| `packages/core/src/runs/store.ts` | run.json / 列表 / canResume |
-| `packages/core/src/runs/trainSession.ts` | fresh / resume / continue |
-| `LlamaFactory/` | 本机安装的训练框架（数据根旁） |
-| `finetune/` | 训练用 Python 虚拟环境 |
+| `docker/` | 单容器：Web + LF WebUI + 可选 SwanLab |
 
 ## 过时文档
 
-`pipeline.md`、部分旧注释仍写 `outputs/sft`、`outputs/train`、`outputs/lf-predict`。新代码一律用上面的 run 目录。
+`pipeline.md`、部分旧注释仍写独立训练/评估页、`outputs/sft`、本仓库 spawn 主训。新代码以本文件与 [SKILL.md](SKILL.md) 为准。
