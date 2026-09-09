@@ -10,11 +10,11 @@
 | `data/term_pairs.jsonl` | 词对字典 |
 | `cache/` | 检索缓存（`--no-cache` / 勾选可跳过读取） |
 | `outputs/workspace.json` | 当前 data/train/eval 指针 |
-| `outputs/data/<id>/train.jsonl` | 该次数据实验训练集 |
-| `outputs/data/<id>/eval/` | 验证切片 |
-| `outputs/lf/` | 给 WebUI 的稳定 `dataset_dir` |
-| `outputs/lf/dataset_info.json` | `term_train` / `term_eval` |
-| `outputs/lf/manifest.json` | 数据实验 id、指纹 |
+| `outputs/data/<id>/` | 数据实验根；同时作为 WebUI `dataset_dir` |
+| `outputs/data/<id>/train.jsonl` | 训练集（alpaca 字段） |
+| `outputs/data/<id>/dataset_info.json` | `term_train` / `term_eval`，生成后写出 |
+| `outputs/data/<id>/manifest.json` | 导出指纹（可选） |
+| `LlamaFactory/llamaboard_config/*.yaml` | 生成后同步 `train.dataset_dir` |
 | `outputs/lf-runs/<id>/` | 每次训练的 `output_dir`（空目录先建好） |
 | `outputs/lf-runs/<id>/training_args.yaml` | 训完后的超参真相 |
 | `outputs/lf-runs/<id>/llamaboard_config.yaml` | WebUI 控件快照 |

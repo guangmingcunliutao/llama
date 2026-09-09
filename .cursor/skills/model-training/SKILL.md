@@ -49,7 +49,7 @@ description: >-
 | 类型 | 目录 | 说明 |
 | --- | --- | --- |
 | 数据 | `outputs/data/<id>/` | `train.jsonl`、`eval/eval*.jsonl` |
-| LF 数据集 | `outputs/lf/` | WebUI 的 **唯一** `dataset_dir`：`term_train` / `term_eval`（alpaca） |
+| LF 数据集 | `outputs/data/<id>/` | WebUI `dataset_dir`：生成时写 `dataset_info.json`，并同步 `llamaboard_config` 的 `train.dataset_dir`（不另拷 `outputs/lf`） |
 | LF 训练 | `outputs/lf-runs/<id>/` | WebUI `output_dir`；主键是这个文件夹 |
 | LF 登记 | `outputs/lf-meta/<id>.json` | **禁止**放进 `output_dir`（LF 可能清空） |
 | 评估 | `outputs/eval/<id>/` | `lf-predict/`、`infer/pred.jsonl`、`reports/metrics.json` |
